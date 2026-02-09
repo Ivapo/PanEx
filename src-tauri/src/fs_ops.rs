@@ -110,3 +110,81 @@ pub fn delete_entry(path: &str) -> Result<(), String> {
 
     trash::delete(&target).map_err(|e| format!("Failed to move to trash: {}", e))
 }
+
+pub fn copy_entry(source: &str, dest_dir: &str) -> Result<String, String> {
+    let src = PathBuf::from(source);
+    if !src.exists() {
+        return Err(format!("Source does not exist: {}", source));
+    }
+    let dest = PathBuf::from(dest_dir);
+    if !dest.is_dir() {
+        return Err(format!("Destination is not a directory: {}", dest_dir));
+    }
+
+    let file_name = src
+        .file_name()
+        .ok_or_else(|| "Cannot determine file name".to_string())?;
+    let dest_path = dest.join(file_name);
+
+    if src.is_dir() {
+        copy_dir_recursive(&src, &dest_path)?;
+    } else {
+        fs::copy(&src, &dest_path).map_err(|e| format!("Failed to copy file: {}", e))?;
+    }
+
+    Ok(dest_path.to_string_lossy().to_string())
+}
+
+fn copy_dir_recursive(src: &Path, dest: &Path) -> Result<(), String> {
+    fs::create_dir_all(dest).map_err(|e| format!("Failed to create directory: {}", e))?;
+
+    let entries =
+        fs::read_dir(src).map_err(|e| format!("Failed to read source directory: {}", e))?;
+
+    for entry in entries {
+        let entry = entry.map_err(|e| format!("Failed to read entry: {}", e))?;
+        let entry_dest = dest.join(entry.file_name());
+
+        if entry.path().is_dir() {
+            copy_dir_recursive(&entry.path(), &entry_dest)?;
+        } else {
+            fs::copy(entry.path(), &entry_dest)
+                .map_err(|e| format!("Failed to copy file: {}", e))?;
+        }
+    }
+
+    Ok(())
+}
+
+pub fn move_entry(source: &str, dest_dir: &str) -> Result<String, String> {
+    let src = PathBuf::from(source);
+    if !src.exists() {
+        return Err(format!("Source does not exist: {}", source));
+    }
+    let dest = PathBuf::from(dest_dir);
+    if !dest.is_dir() {
+        return Err(format!("Destination is not a directory: {}", dest_dir));
+    }
+
+    let file_name = src
+        .file_name()
+        .ok_or_else(|| "Cannot determine file name".to_string())?;
+    let dest_path = dest.join(file_name);
+
+    // Try fast rename first (works on same volume)
+    match fs::rename(&src, &dest_path) {
+        Ok(()) => return Ok(dest_path.to_string_lossy().to_string()),
+        Err(_) => {
+            // Cross-volume: copy then delete
+            copy_entry(source, dest_dir)?;
+            if src.is_dir() {
+                fs::remove_dir_all(&src)
+                    .map_err(|e| format!("Copied but failed to remove source: {}", e))?;
+            } else {
+                fs::remove_file(&src)
+                    .map_err(|e| format!("Copied but failed to remove source: {}", e))?;
+            }
+            Ok(dest_path.to_string_lossy().to_string())
+        }
+    }
+}

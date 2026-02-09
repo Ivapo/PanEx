@@ -34,3 +34,13 @@ pub fn rename_entry(path: String, new_name: String) -> Result<(), String> {
 pub fn delete_entry(path: String) -> Result<(), String> {
     fs_ops::delete_entry(&path)
 }
+
+#[tauri::command]
+pub fn copy_entry(source: String, dest_dir: String) -> Result<String, String> {
+    fs_ops::copy_entry(&source, &dest_dir)
+}
+
+#[tauri::command]
+pub fn move_entry(source: String, dest_dir: String) -> Result<String, String> {
+    fs_ops::move_entry(&source, &dest_dir)
+}

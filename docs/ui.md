@@ -31,6 +31,20 @@ Modal overlay with "Move to Trash" and "Cancel" buttons. Cancel is focused by de
 ### File Opening
 Double-click or context menu Open. Directories navigate into them; files open in the OS default application.
 
+### Drag and Drop Between Panes
+Drag files or folders from one pane and drop them onto the other pane's file list.
+
+- **Move (default)**: Drag and drop moves the file — it disappears from the source pane and appears in the target.
+- **Copy (Option/Alt held)**: Hold the Option key (Alt on Windows/Linux) while dropping to copy instead. The file stays in the source and appears in the target.
+- **Same-pane drop prevention**: Dropping onto the same pane is a no-op.
+- **Visual feedback**: The dragged row gets reduced opacity (0.4). The target pane's file list gets an accent-colored outline highlight. A compact drag ghost shows the icon + filename.
+- **Name conflict dialog**: When a file with the same name already exists in the target, a modal appears with three choices:
+  - **Replace** — Deletes the existing file in the target, then performs the move/copy.
+  - **Keep Both** — Performs the move/copy, then auto-renames the new file with a ` (2)` suffix (incrementing if needed).
+  - **Cancel** — Aborts the operation.
+
+**Tauri note**: Native `dragDropEnabled` is set to `false` in `tauri.conf.json` so that Tauri doesn't intercept HTML5 drag-and-drop events within the webview. The `text/plain` MIME type is used for `dataTransfer` instead of a custom type for WebKit compatibility.
+
 ## UI Fixes Applied
 
 ### Double-click text selection (fixed)

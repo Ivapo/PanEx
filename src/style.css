@@ -129,6 +129,35 @@ body {
   text-align: right;
 }
 
+/* Drag and Drop */
+.pane-row[draggable] {
+  cursor: grab;
+}
+
+.pane-row.dragging {
+  opacity: 0.4;
+}
+
+.pane-list.drop-target {
+  background: rgba(137, 180, 250, 0.08);
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.drag-ghost {
+  position: absolute;
+  top: -1000px;
+  left: -1000px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 13px;
+  white-space: nowrap;
+  border: 1px solid var(--accent);
+  pointer-events: none;
+}
+
 /* Context Menu */
 .context-menu {
   position: fixed;

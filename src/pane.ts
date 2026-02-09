@@ -41,10 +41,12 @@ export interface PaneCallbacks {
   onOpen: (entry: FileEntry) => void;
   onRename: (entry: FileEntry, newName: string) => void;
   onDelete: (entry: FileEntry) => void;
+  onDrop: (entry: FileEntry, sourcePaneIndex: number, copy: boolean) => void;
 }
 
 export function renderPane(
   pane: PaneState,
+  paneIndex: number,
   callbacks: PaneCallbacks
 ): HTMLElement {
   const container = document.createElement("div");
@@ -70,9 +72,63 @@ export function renderPane(
   const list = document.createElement("div");
   list.className = "pane-list";
 
+  // Drop zone handlers on pane-list
+  list.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    if (e.dataTransfer) {
+      e.dataTransfer.dropEffect = e.altKey ? "copy" : "move";
+    }
+    list.classList.add("drop-target");
+  });
+
+  list.addEventListener("dragleave", (e) => {
+    // Only remove if leaving the list itself (not entering a child)
+    if (e.relatedTarget && list.contains(e.relatedTarget as Node)) return;
+    list.classList.remove("drop-target");
+  });
+
+  list.addEventListener("drop", (e) => {
+    e.preventDefault();
+    list.classList.remove("drop-target");
+
+    const json = e.dataTransfer?.getData("text/plain");
+    if (!json) return;
+
+    const data = JSON.parse(json) as { entry: FileEntry; sourcePaneIndex: number };
+    // Prevent drop onto the same pane
+    if (data.sourcePaneIndex === paneIndex) return;
+
+    callbacks.onDrop(data.entry, data.sourcePaneIndex, e.altKey);
+  });
+
   for (const entry of pane.entries) {
     const row = document.createElement("div");
     row.className = `pane-row${entry.is_dir ? " is-dir" : ""}`;
+    row.draggable = true;
+
+    // Drag handlers on row
+    row.addEventListener("dragstart", (e) => {
+      row.classList.add("dragging");
+      if (e.dataTransfer) {
+        e.dataTransfer.effectAllowed = "copyMove";
+        e.dataTransfer.setData(
+          "text/plain",
+          JSON.stringify({ entry, sourcePaneIndex: paneIndex })
+        );
+
+        // Custom compact drag image (icon + name only)
+        const ghost = document.createElement("div");
+        ghost.className = "drag-ghost";
+        ghost.textContent = `${entry.is_dir ? "\uD83D\uDCC1" : "\uD83D\uDCC4"} ${entry.name}`;
+        document.body.appendChild(ghost);
+        e.dataTransfer.setDragImage(ghost, 0, 0);
+        requestAnimationFrame(() => ghost.remove());
+      }
+    });
+
+    row.addEventListener("dragend", () => {
+      row.classList.remove("dragging");
+    });
 
     const icon = document.createElement("span");
     icon.className = "entry-icon";

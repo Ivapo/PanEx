@@ -21,6 +21,8 @@ pub fn run() {
             commands::open_entry,
             commands::rename_entry,
             commands::delete_entry,
+            commands::copy_entry,
+            commands::move_entry,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
