@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { FileEntry, PaneState } from "./types.ts";
+import { showContextMenu } from "./context-menu.ts";
 
 export function createPane(id: string, initialPath: string): PaneState {
   return {
@@ -34,10 +35,17 @@ export async function navigateInto(
   return loadDirectory(updated);
 }
 
+export interface PaneCallbacks {
+  onNavigate: (entry: FileEntry) => void;
+  onNavigateUp: () => void;
+  onOpen: (entry: FileEntry) => void;
+  onRename: (entry: FileEntry, newName: string) => void;
+  onDelete: (entry: FileEntry) => void;
+}
+
 export function renderPane(
   pane: PaneState,
-  onNavigate: (entry: FileEntry) => void,
-  onNavigateUp: () => void
+  callbacks: PaneCallbacks
 ): HTMLElement {
   const container = document.createElement("div");
   container.className = "pane";
@@ -50,7 +58,7 @@ export function renderPane(
   backBtn.className = "back-btn";
   backBtn.textContent = "\u2190";
   backBtn.title = "Go up";
-  backBtn.addEventListener("click", onNavigateUp);
+  backBtn.addEventListener("click", callbacks.onNavigateUp);
 
   const pathDisplay = document.createElement("span");
   pathDisplay.className = "pane-path";
@@ -82,7 +90,39 @@ export function renderPane(
     row.appendChild(name);
     row.appendChild(size);
 
-    row.addEventListener("dblclick", () => onNavigate(entry));
+    row.addEventListener("dblclick", (e) => {
+      e.preventDefault();
+      window.getSelection()?.removeAllRanges();
+      if (entry.is_dir) {
+        callbacks.onNavigate(entry);
+      } else {
+        callbacks.onOpen(entry);
+      }
+    });
+
+    row.addEventListener("contextmenu", (e) => {
+      e.preventDefault();
+      showContextMenu(e.clientX, e.clientY, [
+        {
+          label: "Open",
+          action: () => {
+            if (entry.is_dir) {
+              callbacks.onNavigate(entry);
+            } else {
+              callbacks.onOpen(entry);
+            }
+          },
+        },
+        {
+          label: "Rename",
+          action: () => startInlineRename(row, name, entry, callbacks.onRename),
+        },
+        {
+          label: "Delete",
+          action: () => callbacks.onDelete(entry),
+        },
+      ]);
+    });
 
     list.appendChild(row);
   }
@@ -91,6 +131,66 @@ export function renderPane(
   container.appendChild(list);
 
   return container;
+}
+
+function startInlineRename(
+  row: HTMLElement,
+  nameSpan: HTMLSpanElement,
+  entry: FileEntry,
+  onRename: (entry: FileEntry, newName: string) => void
+) {
+  const input = document.createElement("input");
+  input.type = "text";
+  input.className = "rename-input";
+  input.value = entry.name;
+
+  nameSpan.replaceWith(input);
+  input.focus();
+
+  // Select name without extension for files
+  if (!entry.is_dir) {
+    const dotIndex = entry.name.lastIndexOf(".");
+    if (dotIndex > 0) {
+      input.setSelectionRange(0, dotIndex);
+    } else {
+      input.select();
+    }
+  } else {
+    input.select();
+  }
+
+  let committed = false;
+
+  function commit() {
+    if (committed) return;
+    committed = true;
+    const newName = input.value.trim();
+    input.replaceWith(nameSpan);
+    if (newName && newName !== entry.name) {
+      onRename(entry, newName);
+    }
+  }
+
+  function cancel() {
+    if (committed) return;
+    committed = true;
+    input.replaceWith(nameSpan);
+  }
+
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      commit();
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      cancel();
+    }
+  });
+
+  input.addEventListener("blur", () => {
+    // Small delay to allow click events to fire first
+    requestAnimationFrame(cancel);
+  });
 }
 
 function formatSize(bytes: number): string {

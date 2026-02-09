@@ -1,6 +1,6 @@
 use serde::Serialize;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
 
 #[derive(Debug, Serialize, Clone)]
@@ -49,4 +49,64 @@ pub fn read_directory(path: &str) -> Result<Vec<FileEntry>, String> {
     });
 
     Ok(entries)
+}
+
+pub fn rename_entry(path: &str, new_name: &str) -> Result<(), String> {
+    let source = PathBuf::from(path);
+    if !source.exists() {
+        return Err(format!("Path does not exist: {}", path));
+    }
+
+    let parent = source
+        .parent()
+        .ok_or_else(|| "Cannot determine parent directory".to_string())?;
+    let dest = parent.join(new_name);
+
+    if dest.exists() {
+        return Err(format!("A file named '{}' already exists", new_name));
+    }
+
+    fs::rename(&source, &dest).map_err(|e| format!("Failed to rename: {}", e))
+}
+
+pub fn open_entry(path: &str) -> Result<(), String> {
+    let target = std::path::PathBuf::from(path);
+    if !target.exists() {
+        return Err(format!("Path does not exist: {}", path));
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg(path)
+            .spawn()
+            .map_err(|e| format!("Failed to open: {}", e))?;
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("cmd")
+            .args(["/C", "start", "", path])
+            .spawn()
+            .map_err(|e| format!("Failed to open: {}", e))?;
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        std::process::Command::new("xdg-open")
+            .arg(path)
+            .spawn()
+            .map_err(|e| format!("Failed to open: {}", e))?;
+    }
+
+    Ok(())
+}
+
+pub fn delete_entry(path: &str) -> Result<(), String> {
+    let target = PathBuf::from(path);
+    if !target.exists() {
+        return Err(format!("Path does not exist: {}", path));
+    }
+
+    trash::delete(&target).map_err(|e| format!("Failed to move to trash: {}", e))
 }

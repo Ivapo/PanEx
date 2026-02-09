@@ -30,8 +30,7 @@ body {
 #app {
   display: flex;
   height: 100vh;
-  gap: 1px;
-  background: var(--border-color);
+  background: var(--bg-primary);
 }
 
 .pane {
@@ -39,7 +38,20 @@ body {
   display: flex;
   flex-direction: column;
   background: var(--bg-primary);
-  min-width: 0;
+  min-width: 100px;
+  overflow: hidden;
+}
+
+.divider {
+  width: 4px;
+  background: var(--border-color);
+  cursor: col-resize;
+  flex-shrink: 0;
+}
+
+.divider:hover,
+.divider.dragging {
+  background: var(--accent);
 }
 
 .pane-header {
@@ -115,4 +127,107 @@ body {
   flex-shrink: 0;
   min-width: 60px;
   text-align: right;
+}
+
+/* Context Menu */
+.context-menu {
+  position: fixed;
+  z-index: 1000;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: var(--spacing-sm) 0;
+  min-width: 140px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.context-menu-item {
+  padding: var(--spacing-sm) var(--spacing-lg);
+  cursor: default;
+  user-select: none;
+}
+
+.context-menu-item:hover {
+  background: var(--bg-hover);
+}
+
+/* Inline Rename Input */
+.rename-input {
+  flex: 1;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  border: 1px solid var(--accent);
+  border-radius: 3px;
+  padding: 0 4px;
+  font: inherit;
+  outline: none;
+  min-width: 0;
+}
+
+/* Confirm Dialog */
+.dialog-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.dialog {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: var(--spacing-lg) 24px;
+  min-width: 320px;
+  max-width: 420px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+
+.dialog-title {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: var(--spacing-md);
+}
+
+.dialog-message {
+  color: var(--text-secondary);
+  font-size: 13px;
+  margin-bottom: var(--spacing-lg);
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--spacing-md);
+}
+
+.dialog-btn {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  padding: 6px 16px;
+  cursor: pointer;
+  font: inherit;
+}
+
+.dialog-btn:hover {
+  background: var(--border-color);
+}
+
+.dialog-btn:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.dialog-btn-danger {
+  background: #e64553;
+  border-color: #e64553;
+  color: #fff;
+}
+
+.dialog-btn-danger:hover {
+  background: #d33a43;
 }

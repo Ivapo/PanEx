@@ -4,7 +4,6 @@ mod fs_ops;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .plugin(tauri_plugin_shell::init())
         .setup(|app| {
             if cfg!(debug_assertions) {
                 app.handle().plugin(
@@ -19,6 +18,9 @@ pub fn run() {
             commands::read_dir,
             commands::get_home_dir,
             commands::get_parent_dir,
+            commands::open_entry,
+            commands::rename_entry,
+            commands::delete_entry,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

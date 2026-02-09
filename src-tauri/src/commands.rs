@@ -19,3 +19,18 @@ pub fn get_parent_dir(path: String) -> Result<String, String> {
         .map(|p| p.to_string_lossy().to_string())
         .ok_or_else(|| "No parent directory".to_string())
 }
+
+#[tauri::command]
+pub fn open_entry(path: String) -> Result<(), String> {
+    fs_ops::open_entry(&path)
+}
+
+#[tauri::command]
+pub fn rename_entry(path: String, new_name: String) -> Result<(), String> {
+    fs_ops::rename_entry(&path, &new_name)
+}
+
+#[tauri::command]
+pub fn delete_entry(path: String) -> Result<(), String> {
+    fs_ops::delete_entry(&path)
+}
