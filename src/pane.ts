@@ -1,0 +1,102 @@
+import { invoke } from "@tauri-apps/api/core";
+import type { FileEntry, PaneState } from "./types.ts";
+
+export function createPane(id: string, initialPath: string): PaneState {
+  return {
+    id,
+    currentPath: initialPath,
+    entries: [],
+    selectedIndex: -1,
+  };
+}
+
+export async function loadDirectory(pane: PaneState): Promise<PaneState> {
+  const entries = await invoke<FileEntry[]>("read_dir", {
+    path: pane.currentPath,
+  });
+  return { ...pane, entries, selectedIndex: -1 };
+}
+
+export async function navigateUp(pane: PaneState): Promise<PaneState> {
+  const parentPath = await invoke<string>("get_parent_dir", {
+    path: pane.currentPath,
+  });
+  const updated = { ...pane, currentPath: parentPath };
+  return loadDirectory(updated);
+}
+
+export async function navigateInto(
+  pane: PaneState,
+  entry: FileEntry
+): Promise<PaneState> {
+  if (!entry.is_dir) return pane;
+  const updated = { ...pane, currentPath: entry.path };
+  return loadDirectory(updated);
+}
+
+export function renderPane(
+  pane: PaneState,
+  onNavigate: (entry: FileEntry) => void,
+  onNavigateUp: () => void
+): HTMLElement {
+  const container = document.createElement("div");
+  container.className = "pane";
+  container.dataset.paneId = pane.id;
+
+  const header = document.createElement("div");
+  header.className = "pane-header";
+
+  const backBtn = document.createElement("button");
+  backBtn.className = "back-btn";
+  backBtn.textContent = "\u2190";
+  backBtn.title = "Go up";
+  backBtn.addEventListener("click", onNavigateUp);
+
+  const pathDisplay = document.createElement("span");
+  pathDisplay.className = "pane-path";
+  pathDisplay.textContent = pane.currentPath;
+
+  header.appendChild(backBtn);
+  header.appendChild(pathDisplay);
+
+  const list = document.createElement("div");
+  list.className = "pane-list";
+
+  for (const entry of pane.entries) {
+    const row = document.createElement("div");
+    row.className = `pane-row${entry.is_dir ? " is-dir" : ""}`;
+
+    const icon = document.createElement("span");
+    icon.className = "entry-icon";
+    icon.textContent = entry.is_dir ? "\uD83D\uDCC1" : "\uD83D\uDCC4";
+
+    const name = document.createElement("span");
+    name.className = "entry-name";
+    name.textContent = entry.name;
+
+    const size = document.createElement("span");
+    size.className = "entry-size";
+    size.textContent = entry.is_dir ? "" : formatSize(entry.size);
+
+    row.appendChild(icon);
+    row.appendChild(name);
+    row.appendChild(size);
+
+    row.addEventListener("dblclick", () => onNavigate(entry));
+
+    list.appendChild(row);
+  }
+
+  container.appendChild(header);
+  container.appendChild(list);
+
+  return container;
+}
+
+function formatSize(bytes: number): string {
+  if (bytes === 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB"];
+  const i = Math.floor(Math.log(bytes) / Math.log(1024));
+  const size = bytes / Math.pow(1024, i);
+  return `${size.toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
+}
