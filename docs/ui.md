@@ -35,6 +35,9 @@ The new pane opens to the same directory as the pane it was split from. Splits c
 
 **Data model**: `LayoutNode = LayoutLeaf { paneId } | LayoutSplit { direction, first, second, ratio }`. Pane state is stored in a `Map<string, PaneState>` keyed by pane ID. Tree operations (`splitPane`, `removePane`, `countLeaves`) are pure functions in `layout.ts`.
 
+### Pane Navigation
+Each pane header has a back button (arrow) and a home button (house icon). The back button navigates to the parent directory. The home button navigates to the user's home directory.
+
 ### Context Menu
 Right-click (or Ctrl+click on Mac) a file/folder row to show a floating context menu with Open, Rename, and Delete options. Auto-dismisses on click outside, Escape, or another right-click. Repositions if it would overflow the window edge.
 

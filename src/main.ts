@@ -61,6 +61,7 @@ function renderNode(node: LayoutNode, totalPanes: number): HTMLElement {
     return renderPane(pane, paneId, {
       onNavigate: (entry: FileEntry) => handleNavigate(paneId, entry),
       onNavigateUp: () => handleNavigateUp(paneId),
+      onHome: () => handleHome(paneId),
       onOpen: (entry: FileEntry) => handleOpen(entry),
       onRename: (entry: FileEntry, newName: string) => handleRename(paneId, entry, newName),
       onDelete: (entry: FileEntry) => handleDelete(paneId, entry),
@@ -260,6 +261,13 @@ async function handleNavigateUp(paneId: string) {
   const pane = paneMap.get(paneId);
   if (!pane) return;
   paneMap.set(paneId, await navigateUp(pane));
+  renderLayout();
+}
+
+async function handleHome(paneId: string) {
+  const pane = paneMap.get(paneId);
+  if (!pane) return;
+  paneMap.set(paneId, await loadDirectory({ ...pane, currentPath: homePath }));
   renderLayout();
 }
 

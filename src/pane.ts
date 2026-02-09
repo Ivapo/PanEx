@@ -38,6 +38,7 @@ export async function navigateInto(
 export interface PaneCallbacks {
   onNavigate: (entry: FileEntry) => void;
   onNavigateUp: () => void;
+  onHome: () => void;
   onOpen: (entry: FileEntry) => void;
   onRename: (entry: FileEntry, newName: string) => void;
   onDelete: (entry: FileEntry) => void;
@@ -69,7 +70,14 @@ export function renderPane(
   pathDisplay.className = "pane-path";
   pathDisplay.textContent = pane.currentPath;
 
+  const homeBtn = document.createElement("button");
+  homeBtn.className = "back-btn";
+  homeBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 7l5-5 5 5"/><path d="M3 6.5V12h3V9h2v3h3V6.5"/></svg>`;
+  homeBtn.title = "Go home";
+  homeBtn.addEventListener("click", callbacks.onHome);
+
   header.appendChild(backBtn);
+  header.appendChild(homeBtn);
   header.appendChild(pathDisplay);
 
   const actions = document.createElement("div");
