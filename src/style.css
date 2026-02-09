@@ -33,24 +33,42 @@ body {
   background: var(--bg-primary);
 }
 
+.split-container {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
 .pane {
   flex: 1;
   display: flex;
   flex-direction: column;
   background: var(--bg-primary);
   min-width: 100px;
+  min-height: 100px;
   overflow: hidden;
 }
 
-.divider {
+.divider-vertical {
   width: 4px;
   background: var(--border-color);
   cursor: col-resize;
   flex-shrink: 0;
 }
 
-.divider:hover,
-.divider.dragging {
+.divider-horizontal {
+  height: 4px;
+  background: var(--border-color);
+  cursor: row-resize;
+  flex-shrink: 0;
+}
+
+.divider-vertical:hover,
+.divider-vertical.dragging,
+.divider-horizontal:hover,
+.divider-horizontal.dragging {
   background: var(--accent);
 }
 
@@ -259,4 +277,78 @@ body {
 
 .dialog-btn-danger:hover {
   background: #d33a43;
+}
+
+.dialog-btn-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #1e1e2e;
+}
+
+.dialog-btn-primary:hover {
+  filter: brightness(0.9);
+}
+
+/* Pane Header Actions */
+.pane-header-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.pane-action-btn {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.pane-action-btn:hover {
+  background: var(--bg-hover);
+  color: var(--accent);
+}
+
+/* Close Pane Button */
+.close-pane-btn {
+  font-size: 16px;
+}
+
+.close-pane-btn:hover {
+  background: rgba(230, 69, 83, 0.2);
+  color: #e64553;
+}
+
+/* License Input */
+.license-input {
+  width: 100%;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  padding: 8px 12px;
+  font: inherit;
+  outline: none;
+  margin-bottom: var(--spacing-lg);
+}
+
+.license-input:focus {
+  border-color: var(--accent);
+}
+
+.license-input.input-error {
+  border-color: #e64553;
+  animation: shake 0.3s ease-in-out;
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-4px); }
+  75% { transform: translateX(4px); }
 }

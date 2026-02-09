@@ -41,12 +41,15 @@ export interface PaneCallbacks {
   onOpen: (entry: FileEntry) => void;
   onRename: (entry: FileEntry, newName: string) => void;
   onDelete: (entry: FileEntry) => void;
-  onDrop: (entry: FileEntry, sourcePaneIndex: number, copy: boolean) => void;
+  onDrop: (entry: FileEntry, sourcePaneId: string, copy: boolean) => void;
+  onSplitRight?: () => void;
+  onSplitBottom?: () => void;
+  onClose?: () => void;
 }
 
 export function renderPane(
   pane: PaneState,
-  paneIndex: number,
+  paneId: string,
   callbacks: PaneCallbacks
 ): HTMLElement {
   const container = document.createElement("div");
@@ -68,6 +71,38 @@ export function renderPane(
 
   header.appendChild(backBtn);
   header.appendChild(pathDisplay);
+
+  const actions = document.createElement("div");
+  actions.className = "pane-header-actions";
+
+  if (callbacks.onSplitRight) {
+    const splitRightBtn = document.createElement("button");
+    splitRightBtn.className = "pane-action-btn";
+    splitRightBtn.title = "Split right";
+    splitRightBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="1" width="12" height="12" rx="1.5"/><line x1="7" y1="1" x2="7" y2="13"/></svg>`;
+    splitRightBtn.addEventListener("click", callbacks.onSplitRight);
+    actions.appendChild(splitRightBtn);
+  }
+
+  if (callbacks.onSplitBottom) {
+    const splitBottomBtn = document.createElement("button");
+    splitBottomBtn.className = "pane-action-btn";
+    splitBottomBtn.title = "Split down";
+    splitBottomBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="1" width="12" height="12" rx="1.5"/><line x1="1" y1="7" x2="13" y2="7"/></svg>`;
+    splitBottomBtn.addEventListener("click", callbacks.onSplitBottom);
+    actions.appendChild(splitBottomBtn);
+  }
+
+  if (callbacks.onClose) {
+    const closeBtn = document.createElement("button");
+    closeBtn.className = "pane-action-btn close-pane-btn";
+    closeBtn.textContent = "\u00d7";
+    closeBtn.title = "Close pane";
+    closeBtn.addEventListener("click", callbacks.onClose);
+    actions.appendChild(closeBtn);
+  }
+
+  header.appendChild(actions);
 
   const list = document.createElement("div");
   list.className = "pane-list";
@@ -94,11 +129,11 @@ export function renderPane(
     const json = e.dataTransfer?.getData("text/plain");
     if (!json) return;
 
-    const data = JSON.parse(json) as { entry: FileEntry; sourcePaneIndex: number };
+    const data = JSON.parse(json) as { entry: FileEntry; sourcePaneId: string };
     // Prevent drop onto the same pane
-    if (data.sourcePaneIndex === paneIndex) return;
+    if (data.sourcePaneId === paneId) return;
 
-    callbacks.onDrop(data.entry, data.sourcePaneIndex, e.altKey);
+    callbacks.onDrop(data.entry, data.sourcePaneId, e.altKey);
   });
 
   for (const entry of pane.entries) {
@@ -113,7 +148,7 @@ export function renderPane(
         e.dataTransfer.effectAllowed = "copyMove";
         e.dataTransfer.setData(
           "text/plain",
-          JSON.stringify({ entry, sourcePaneIndex: paneIndex })
+          JSON.stringify({ entry, sourcePaneId: paneId })
         );
 
         // Custom compact drag image (icon + name only)

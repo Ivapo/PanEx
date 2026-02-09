@@ -1,5 +1,5 @@
 const LICENSE_KEY_STORAGE = "paneexplorer_license_key";
-const MAX_FREE_PANES = 2;
+export const MAX_FREE_PANES = 3;
 
 export function isPremium(): boolean {
   const key = localStorage.getItem(LICENSE_KEY_STORAGE);

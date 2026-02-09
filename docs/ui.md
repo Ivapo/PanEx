@@ -16,8 +16,24 @@ Uses Catppuccin Mocha color palette via CSS custom properties defined in `:root`
 
 ## Features
 
-### Dual-Pane Layout
-Two panes side by side, each showing a directory listing. Resizable divider between them (drag to resize). Minimum pane width: 100px.
+### Split Pane Layout
+The layout is a recursive binary tree of splits and panes, supporting arbitrary nesting in both directions. The app starts with two panes side by side (vertical split).
+
+**Splitting**: Each pane header has two split icons on the right:
+- **Split Right** (rectangle with vertical line) — creates a new pane to the right of the current one (vertical split).
+- **Split Down** (rectangle with horizontal line) — creates a new pane below the current one (horizontal split).
+
+The new pane opens to the same directory as the pane it was split from. Splits can be nested arbitrarily (e.g., split right, then split the new pane down).
+
+**Closing**: When there are more than 2 panes, each pane header shows a close button (x). Closing a pane collapses its parent split, promoting the sibling to take its place in the tree.
+
+**Resizing**: Each split has a draggable divider between its two children. Vertical splits use a `col-resize` cursor (drag left/right), horizontal splits use `row-resize` (drag up/down). The ratio is clamped between 10% and 90%. Minimum pane dimensions: 100px width, 100px height.
+
+**Directory sync**: File operations (move, copy, rename, delete) refresh all panes showing the affected directories, not just the pane where the action originated.
+
+**Premium gate**: Free version allows up to 3 panes. Attempting to split beyond that prompts for a license key.
+
+**Data model**: `LayoutNode = LayoutLeaf { paneId } | LayoutSplit { direction, first, second, ratio }`. Pane state is stored in a `Map<string, PaneState>` keyed by pane ID. Tree operations (`splitPane`, `removePane`, `countLeaves`) are pure functions in `layout.ts`.
 
 ### Context Menu
 Right-click (or Ctrl+click on Mac) a file/folder row to show a floating context menu with Open, Rename, and Delete options. Auto-dismisses on click outside, Escape, or another right-click. Repositions if it would overflow the window edge.
@@ -32,7 +48,7 @@ Modal overlay with "Move to Trash" and "Cancel" buttons. Cancel is focused by de
 Double-click or context menu Open. Directories navigate into them; files open in the OS default application.
 
 ### Drag and Drop Between Panes
-Drag files or folders from one pane and drop them onto the other pane's file list.
+Drag files or folders from one pane and drop them onto any other pane's file list. Panes are identified by string IDs (not indices) in the drag data.
 
 - **Move (default)**: Drag and drop moves the file — it disappears from the source pane and appears in the target.
 - **Copy (Option/Alt held)**: Hold the Option key (Alt on Windows/Linux) while dropping to copy instead. The file stays in the source and appears in the target.
