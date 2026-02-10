@@ -1,18 +1,55 @@
 # UI
 
-## Theme
+## Themes
 
-Uses Catppuccin Mocha color palette via CSS custom properties defined in `:root` (style.css).
+Three switchable themes, toggled via a button in the global toolbar at the top of the window. The selected theme persists across restarts via `localStorage` (key: `paneexplorer_theme`). The active theme is applied as a `data-theme` attribute on the `<html>` element; CSS custom properties are overridden per theme.
 
-| Variable | Value | Usage |
-|----------|-------|-------|
-| `--bg-primary` | `#1e1e2e` | App background, pane background |
-| `--bg-secondary` | `#313244` | Headers, dialogs, context menu, inputs |
-| `--bg-hover` | `#45475a` | Row hover, button hover |
-| `--text-primary` | `#cdd6f4` | Main text |
-| `--text-secondary` | `#a6adc8` | Path display, file sizes |
-| `--border-color` | `#585b70` | Dividers, borders |
-| `--accent` | `#89b4fa` | Directory names, focus outlines, divider hover |
+Clicking the theme button cycles: **Dark → Light → TUI → Dark**.
+
+### Dark (default — Catppuccin Mocha)
+
+| Variable | Value |
+|----------|-------|
+| `--bg-primary` | `#1e1e2e` |
+| `--bg-secondary` | `#313244` |
+| `--bg-hover` | `#45475a` |
+| `--text-primary` | `#cdd6f4` |
+| `--text-secondary` | `#a6adc8` |
+| `--border-color` | `#585b70` |
+| `--accent` | `#89b4fa` |
+| `--danger` | `#e64553` |
+
+Font: system sans-serif. Border radius: 4px / 8px.
+
+### Light (Catppuccin Latte)
+
+| Variable | Value |
+|----------|-------|
+| `--bg-primary` | `#eff1f5` |
+| `--bg-secondary` | `#dce0e8` |
+| `--bg-hover` | `#ccd0da` |
+| `--text-primary` | `#4c4f69` |
+| `--text-secondary` | `#6c6f85` |
+| `--border-color` | `#bcc0cc` |
+| `--accent` | `#1e66f5` |
+| `--danger` | `#d20f39` |
+
+Font: system sans-serif. Border radius: 4px / 8px.
+
+### TUI (Cobalt)
+
+| Variable | Value |
+|----------|-------|
+| `--bg-primary` | `#00254b` |
+| `--bg-secondary` | `#003572` |
+| `--bg-hover` | `#004999` |
+| `--text-primary` | `#ffffff` |
+| `--text-secondary` | `#aaccee` |
+| `--border-color` | `#1a6baa` |
+| `--accent` | `#ffc600` |
+| `--danger` | `#ff5555` |
+
+Font: `"SF Mono", "Menlo", "Consolas", monospace`. Border radius: 0 (flat/sharp corners).
 
 ## Features
 
@@ -45,7 +82,7 @@ Right-click (or Ctrl+click on Mac) a file/folder row to show a floating context 
 Triggered from context menu. Replaces the filename span with a text input. For files, only the name (not extension) is selected. Enter commits the rename, Escape or blur cancels.
 
 ### Delete Confirmation Dialog
-Modal overlay with "Move to Trash" and "Cancel" buttons. Cancel is focused by default (safety). Dismisses on Escape or clicking outside the dialog. Uses a red accent (`#e64553`) for the danger button.
+Modal overlay with "Move to Trash" and "Cancel" buttons. Cancel is focused by default (safety). Dismisses on Escape or clicking outside the dialog. Uses a red accent (`var(--danger)`) for the danger button.
 
 ### File Opening
 Double-click or context menu Open. Directories navigate into them; files open in the OS default application.

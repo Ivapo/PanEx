@@ -76,8 +76,12 @@ export function renderPane(
   homeBtn.title = "Go home";
   homeBtn.addEventListener("click", callbacks.onHome);
 
-  header.appendChild(backBtn);
-  header.appendChild(homeBtn);
+  const nav = document.createElement("div");
+  nav.className = "pane-nav";
+  nav.appendChild(backBtn);
+  nav.appendChild(homeBtn);
+
+  header.appendChild(nav);
   header.appendChild(pathDisplay);
 
   const actions = document.createElement("div");

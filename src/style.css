@@ -6,6 +6,9 @@
   --text-secondary: #a6adc8;
   --border-color: #585b70;
   --accent: #89b4fa;
+  --danger: #e64553;
+  --radius: 4px;
+  --radius-lg: 8px;
   --spacing-sm: 4px;
   --spacing-md: 8px;
   --spacing-lg: 16px;
@@ -13,6 +16,51 @@
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
   font-size: 13px;
   color: var(--text-primary);
+}
+
+[data-theme="light"] {
+  --bg-primary: #faf6e9;
+  --bg-secondary: #f0eacd;
+  --bg-hover: #ccd0da;
+  --text-primary: #4c4f69;
+  --text-secondary: #6c6f85;
+  --border-color: #89cfef;
+  --accent: #1e66f5;
+  --danger: #d20f39;
+}
+
+[data-theme="3.1"] {
+  --bg-primary: #001e3d;
+  --bg-secondary: #002b5c;
+  --bg-hover: #ffc600;
+  --text-primary: #e0e0e0;
+  --text-secondary: #88aacc;
+  --border-color: #005599;
+  --accent: #ffc600;
+  --danger: #ff5555;
+  --radius: 0px;
+  --radius-lg: 0px;
+  --tui-header-bg: #0055aa;
+  --tui-header-text: #ffffff;
+  --tui-hover-text: #001e3d;
+  --tui-glow: #4488cc;
+
+  font-family: "MesloLGS NF", "SF Mono", "Menlo", "Consolas", monospace;
+}
+
+[data-theme="tui"] {
+  --bg-primary: #0f0f17;
+  --bg-secondary: #0a0a12;
+  --bg-hover: #292e42;
+  --text-primary: #c0caf5;
+  --text-secondary: #565f89;
+  --border-color: #3b4261;
+  --accent: #7aa2f7;
+  --danger: #f7768e;
+  --radius: 0px;
+  --radius-lg: 0px;
+
+  font-family: "MesloLGS NF", "SF Mono", "Menlo", "Consolas", monospace;
 }
 
 * {
@@ -29,8 +77,37 @@ body {
 
 #app {
   display: flex;
+  flex-direction: column;
   height: 100vh;
   background: var(--bg-primary);
+}
+
+/* Global Toolbar */
+.global-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 2px var(--spacing-md);
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color);
+  flex-shrink: 0;
+}
+
+.theme-btn {
+  background: none;
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 2px 10px;
+  border-radius: var(--radius);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.theme-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
 }
 
 .split-container {
@@ -82,13 +159,20 @@ body {
   flex-shrink: 0;
 }
 
+.pane-nav {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  flex-shrink: 0;
+}
+
 .back-btn {
   background: none;
   border: 1px solid var(--border-color);
   color: var(--text-primary);
   cursor: pointer;
   padding: 2px 8px;
-  border-radius: 4px;
+  border-radius: var(--radius);
   font-size: 14px;
 }
 
@@ -169,7 +253,7 @@ body {
   background: var(--bg-secondary);
   color: var(--text-primary);
   padding: 4px 10px;
-  border-radius: 4px;
+  border-radius: var(--radius);
   font-size: 13px;
   white-space: nowrap;
   border: 1px solid var(--accent);
@@ -182,7 +266,7 @@ body {
   z-index: 1000;
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
-  border-radius: 6px;
+  border-radius: var(--radius-lg);
   padding: var(--spacing-sm) 0;
   min-width: 140px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
@@ -204,7 +288,7 @@ body {
   background: var(--bg-secondary);
   color: var(--text-primary);
   border: 1px solid var(--accent);
-  border-radius: 3px;
+  border-radius: var(--radius);
   padding: 0 4px;
   font: inherit;
   outline: none;
@@ -225,7 +309,7 @@ body {
 .dialog {
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   padding: var(--spacing-lg) 24px;
   min-width: 320px;
   max-width: 420px;
@@ -254,7 +338,7 @@ body {
   background: var(--bg-hover);
   color: var(--text-primary);
   border: 1px solid var(--border-color);
-  border-radius: 4px;
+  border-radius: var(--radius);
   padding: 6px 16px;
   cursor: pointer;
   font: inherit;
@@ -270,13 +354,13 @@ body {
 }
 
 .dialog-btn-danger {
-  background: #e64553;
-  border-color: #e64553;
+  background: var(--danger);
+  border-color: var(--danger);
   color: #fff;
 }
 
 .dialog-btn-danger:hover {
-  background: #d33a43;
+  filter: brightness(0.9);
 }
 
 .dialog-btn-primary {
@@ -303,7 +387,7 @@ body {
   color: var(--text-secondary);
   cursor: pointer;
   padding: 2px 4px;
-  border-radius: 4px;
+  border-radius: var(--radius);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -322,7 +406,7 @@ body {
 
 .close-pane-btn:hover {
   background: rgba(230, 69, 83, 0.2);
-  color: #e64553;
+  color: var(--danger);
 }
 
 /* License Input */
@@ -331,7 +415,7 @@ body {
   background: var(--bg-primary);
   color: var(--text-primary);
   border: 1px solid var(--border-color);
-  border-radius: 4px;
+  border-radius: var(--radius);
   padding: 8px 12px;
   font: inherit;
   outline: none;
@@ -343,7 +427,7 @@ body {
 }
 
 .license-input.input-error {
-  border-color: #e64553;
+  border-color: var(--danger);
   animation: shake 0.3s ease-in-out;
 }
 
@@ -351,4 +435,665 @@ body {
   0%, 100% { transform: translateX(0); }
   25% { transform: translateX(-4px); }
   75% { transform: translateX(4px); }
+}
+
+/* Light theme — pink toolbar */
+[data-theme="light"] .global-toolbar {
+  background: #f4c2d0;
+  border-bottom-color: #e8a0b5;
+}
+
+/* ==============================
+   3.1 Theme Overrides
+   Midnight Commander / Norton Commander style
+   ============================== */
+
+/* Scanline overlay on the whole app */
+[data-theme="3.1"] body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9999;
+  background: repeating-linear-gradient(
+    to bottom,
+    transparent 0px,
+    transparent 2px,
+    rgba(0, 0, 0, 0.08) 2px,
+    rgba(0, 0, 0, 0.08) 4px
+  );
+}
+
+/* Subtle text glow — phosphor screen effect */
+[data-theme="3.1"] body {
+  text-shadow: 0 0 2px rgba(68, 136, 204, 0.3);
+}
+
+/* Pane gets a visible border like a TUI panel */
+[data-theme="3.1"] .pane {
+  border: 1px solid var(--border-color);
+}
+
+/* ── Powerline Header (p10k style) ── */
+[data-theme="3.1"] .pane-header {
+  background: var(--bg-primary);
+  border-bottom: 1px solid var(--border-color);
+  padding: 0;
+  gap: 0;
+  height: 26px;
+  overflow: visible;
+}
+
+/* Nav segment — terminal color 7 bg (light gray), color 232 fg (near black) */
+[data-theme="3.1"] .pane-nav {
+  background: #aaaaaa;
+  color: #1a1a1a;
+  gap: 2px;
+  padding: 0 10px 0 6px;
+  height: 100%;
+  position: relative;
+  z-index: 3;
+  margin-right: 12px;
+  clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 50%, calc(100% - 10px) 100%, 0 100%);
+}
+
+[data-theme="3.1"] .back-btn {
+  background: none;
+  border: none;
+  color: #1a1a1a;
+  padding: 0 4px;
+  font-size: 13px;
+}
+
+[data-theme="3.1"] .back-btn:hover {
+  color: #000000;
+  background: rgba(0, 0, 0, 0.1);
+}
+
+[data-theme="3.1"] .back-btn svg {
+  stroke: #1a1a1a;
+}
+
+/* Path segment — terminal color 4 bg (blue), color 254 fg (white) */
+[data-theme="3.1"] .pane-path {
+  background: #0055aa;
+  color: #ffffff;
+  font-weight: bold;
+  font-size: 12px;
+  padding: 0 14px 0 10px;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  position: relative;
+  z-index: 2;
+  margin-left: -6px;
+  margin-right: 12px;
+  clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 50%, calc(100% - 10px) 100%, 0 100%, 10px 50%);
+  flex: 1;
+  min-width: 0;
+}
+
+/* Actions segment — darker bg */
+[data-theme="3.1"] .pane-header-actions {
+  background: #003366;
+  color: #ffffff;
+  height: 100%;
+  padding: 0 8px 0 6px;
+  margin-left: -6px;
+  display: flex;
+  align-items: center;
+  z-index: 1;
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%, 10px 50%);
+}
+
+/* Dense row spacing */
+[data-theme="3.1"] .pane-row {
+  padding: 1px 8px;
+  gap: 4px;
+  line-height: 1.5;
+  border-bottom: none;
+}
+
+/* Block-style hover: full invert like cursor selection */
+[data-theme="3.1"] .pane-row:hover {
+  background: var(--accent);
+  color: var(--tui-hover-text);
+}
+
+[data-theme="3.1"] .pane-row:hover .entry-name,
+[data-theme="3.1"] .pane-row:hover .entry-size,
+[data-theme="3.1"] .pane-row:hover .entry-icon {
+  color: var(--tui-hover-text);
+}
+
+[data-theme="3.1"] .pane-row.is-dir .entry-name {
+  color: #ffffff;
+  font-weight: bold;
+}
+
+[data-theme="3.1"] .pane-row:hover.is-dir .entry-name {
+  color: var(--tui-hover-text);
+}
+
+/* Dividers look like box-drawing lines */
+[data-theme="3.1"] .divider-vertical {
+  width: 2px;
+  background: var(--border-color);
+}
+
+[data-theme="3.1"] .divider-horizontal {
+  height: 2px;
+  background: var(--border-color);
+}
+
+[data-theme="3.1"] .divider-vertical:hover,
+[data-theme="3.1"] .divider-vertical.dragging,
+[data-theme="3.1"] .divider-horizontal:hover,
+[data-theme="3.1"] .divider-horizontal.dragging {
+  background: var(--accent);
+}
+
+/* Toolbar — box-drawing frame style (╭─ ... ─╮) */
+[data-theme="3.1"] .global-toolbar {
+  background: var(--bg-primary);
+  border-bottom: 1px solid var(--border-color);
+  padding: 1px 8px;
+  color: #585858;
+  font-size: 12px;
+}
+
+[data-theme="3.1"] .global-toolbar::before {
+  content: "╭─ PaneExplorer ";
+  color: #585858;
+  margin-right: auto;
+}
+
+[data-theme="3.1"] .theme-btn {
+  border: none;
+  background: #aaaaaa;
+  color: #1a1a1a;
+  font-weight: bold;
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: 0.5px;
+  padding: 1px 8px;
+}
+
+[data-theme="3.1"] .theme-btn:hover {
+  background: var(--accent);
+  color: var(--tui-hover-text);
+}
+
+/* Action buttons in powerline header */
+[data-theme="3.1"] .pane-action-btn {
+  color: #aaccee;
+}
+
+[data-theme="3.1"] .pane-action-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
+  color: #ffffff;
+}
+
+[data-theme="3.1"] .close-pane-btn:hover {
+  background: var(--danger);
+  color: #ffffff;
+}
+
+[data-theme="3.1"] .pane-action-btn svg {
+  stroke: currentColor;
+}
+
+/* Context menu — TUI popup style */
+[data-theme="3.1"] .context-menu {
+  border: 2px solid var(--accent);
+  box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.5);
+  background: var(--bg-secondary);
+}
+
+[data-theme="3.1"] .context-menu-item:hover {
+  background: var(--accent);
+  color: var(--tui-hover-text);
+}
+
+/* Dialog — TUI modal panel */
+[data-theme="3.1"] .dialog-overlay {
+  background: rgba(0, 0, 0, 0.7);
+}
+
+[data-theme="3.1"] .dialog {
+  border: 2px solid var(--accent);
+  box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.6);
+}
+
+[data-theme="3.1"] .dialog-btn {
+  text-transform: uppercase;
+  font-size: 11px;
+  letter-spacing: 0.5px;
+  font-weight: bold;
+  border: 1px solid var(--border-color);
+}
+
+[data-theme="3.1"] .dialog-btn:hover {
+  background: var(--accent);
+  color: var(--tui-hover-text);
+  border-color: var(--accent);
+}
+
+[data-theme="3.1"] .dialog-btn-danger {
+  border-color: var(--danger);
+}
+
+[data-theme="3.1"] .dialog-btn-primary {
+  color: var(--tui-hover-text);
+}
+
+/* Drop target — bold border */
+[data-theme="3.1"] .pane-list.drop-target {
+  background: rgba(255, 198, 0, 0.08);
+  outline: 2px solid var(--accent);
+}
+
+/* Drag ghost */
+[data-theme="3.1"] .drag-ghost {
+  border: 1px solid var(--accent);
+  box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.5);
+}
+
+/* Scrollbar — thin terminal style */
+[data-theme="3.1"] .pane-list::-webkit-scrollbar {
+  width: 8px;
+}
+
+[data-theme="3.1"] .pane-list::-webkit-scrollbar-track {
+  background: var(--bg-primary);
+}
+
+[data-theme="3.1"] .pane-list::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border: none;
+}
+
+[data-theme="3.1"] .pane-list::-webkit-scrollbar-thumb:hover {
+  background: var(--accent);
+}
+
+/* License input */
+[data-theme="3.1"] .license-input {
+  border: 1px solid var(--accent);
+}
+
+/* Rename input */
+[data-theme="3.1"] .rename-input {
+  background: var(--bg-primary);
+  border: 1px solid var(--accent);
+}
+
+/* ── TUI ASCII Icons ── */
+/* Replace emoji file/folder icons with text */
+[data-theme="3.1"] .entry-icon {
+  font-size: 0;
+  line-height: 0;
+}
+
+[data-theme="3.1"] .pane-row.is-dir .entry-icon::after {
+  content: "\f07b";
+  font-size: 14px;
+  line-height: 1;
+  color: var(--accent);
+}
+
+[data-theme="3.1"] .pane-row:not(.is-dir) .entry-icon::after {
+  content: "\f016";
+  font-size: 14px;
+  line-height: 1;
+  color: var(--text-secondary);
+}
+
+/* Hover: invert icon color too */
+[data-theme="3.1"] .pane-row:hover .entry-icon::after {
+  color: var(--tui-hover-text);
+}
+
+/* Keep the SVG home icon in 3.1 mode */
+
+/* Replace SVG split buttons with box-drawing chars */
+[data-theme="3.1"] .pane-action-btn svg {
+  display: none;
+}
+
+[data-theme="3.1"] .pane-action-btn[title="Split right"]::after {
+  content: "┃";
+  font-size: 12px;
+}
+
+[data-theme="3.1"] .pane-action-btn[title="Split down"]::after {
+  content: "━";
+  font-size: 12px;
+}
+
+/* Drag ghost — ASCII style */
+[data-theme="3.1"] .drag-ghost {
+  font-size: 0;
+}
+
+[data-theme="3.1"] .drag-ghost::after {
+  font-size: 13px;
+  content: "[ move ]";
+  color: var(--text-primary);
+}
+
+/* ==============================
+   TUI Theme Overrides (Ratatui)
+   Clean terminal UI — Tokyo Night palette
+   ============================== */
+
+/* Pane: border box starts at header midpoint — ratatui Block style */
+[data-theme="tui"] .pane {
+  border: none;
+  margin: 1px;
+  position: relative;
+}
+
+[data-theme="tui"] .pane::after {
+  content: '';
+  position: absolute;
+  top: 12px;
+  left: 1px;
+  right: 1px;
+  bottom: 1px;
+  border: 1px solid var(--border-color);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Divider: invisible gap, just a resize handle */
+[data-theme="tui"] .divider-vertical,
+[data-theme="tui"] .divider-horizontal {
+  background: var(--bg-primary);
+}
+
+/* Header: transparent, sits on top of the border line */
+[data-theme="tui"] .pane-header {
+  background: transparent;
+  border-bottom: none;
+  padding: 2px 12px;
+  gap: 4px;
+  min-height: 24px;
+  position: relative;
+  z-index: 1;
+}
+
+/* Header children break the top border line with a background */
+[data-theme="tui"] .pane-nav,
+[data-theme="tui"] .pane-header .pane-path,
+[data-theme="tui"] .pane-header .pane-header-actions {
+  background: var(--bg-primary);
+  padding-left: 4px;
+  padding-right: 4px;
+}
+
+/* File list sits above the border pseudo-element */
+[data-theme="tui"] .pane-list {
+  position: relative;
+  z-index: 1;
+  margin: 0 2px 2px 2px;
+}
+
+/* Nav buttons: ghost style, subtle */
+[data-theme="tui"] .back-btn {
+  border: none;
+  color: var(--text-secondary);
+  padding: 1px 4px;
+  font-size: 12px;
+}
+
+[data-theme="tui"] .back-btn:hover {
+  color: var(--accent);
+  background: none;
+}
+
+/* Path: accent color like a ratatui Block title */
+[data-theme="tui"] .pane-path {
+  color: var(--accent);
+  font-weight: bold;
+  font-size: 12px;
+}
+
+/* Rows: clean, tight, with subtle left-border highlight on hover */
+[data-theme="tui"] .pane-row {
+  padding: 1px 8px;
+  gap: 6px;
+  line-height: 1.6;
+  border-left: 2px solid transparent;
+}
+
+[data-theme="tui"] .pane-row:hover {
+  background: var(--bg-hover);
+  border-left-color: var(--accent);
+}
+
+/* Directories: bright accent, files: default */
+[data-theme="tui"] .pane-row.is-dir .entry-name {
+  color: #7dcfff;
+  font-weight: normal;
+}
+
+/* Nerd Font icons */
+[data-theme="tui"] .entry-icon {
+  font-size: 0;
+  line-height: 0;
+}
+
+[data-theme="tui"] .pane-row.is-dir .entry-icon::after {
+  content: "\f07b";
+  font-size: 13px;
+  line-height: 1;
+  color: #7dcfff;
+}
+
+[data-theme="tui"] .pane-row:not(.is-dir) .entry-icon::after {
+  content: "\f016";
+  font-size: 13px;
+  line-height: 1;
+  color: var(--text-secondary);
+}
+
+[data-theme="tui"] .pane-row:hover .entry-icon::after {
+  color: var(--accent);
+}
+
+[data-theme="tui"] .pane-row:hover.is-dir .entry-icon::after {
+  color: #7dcfff;
+}
+
+/* Replace SVG home button with ~ */
+[data-theme="tui"] .pane-nav .back-btn:last-child svg {
+  display: none;
+}
+
+[data-theme="tui"] .pane-nav .back-btn:last-child::after {
+  content: "~";
+  font-size: 12px;
+}
+
+/* Replace SVG split/close icons with text */
+[data-theme="tui"] .pane-action-btn svg {
+  display: none;
+}
+
+[data-theme="tui"] .pane-action-btn[title="Split right"]::after {
+  content: "│";
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+[data-theme="tui"] .pane-action-btn[title="Split down"]::after {
+  content: "─";
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+[data-theme="tui"] .pane-action-btn:hover {
+  background: none;
+  color: var(--accent);
+}
+
+[data-theme="tui"] .pane-action-btn:hover::after {
+  color: var(--accent);
+}
+
+[data-theme="tui"] .close-pane-btn:hover {
+  background: none;
+  color: var(--danger);
+}
+
+/* Dividers: invisible gap, accent on hover for resize affordance */
+[data-theme="tui"] .divider-vertical {
+  width: 3px;
+  background: var(--bg-primary);
+}
+
+[data-theme="tui"] .divider-horizontal {
+  height: 3px;
+  background: var(--bg-primary);
+}
+
+[data-theme="tui"] .divider-vertical:hover,
+[data-theme="tui"] .divider-vertical.dragging,
+[data-theme="tui"] .divider-horizontal:hover,
+[data-theme="tui"] .divider-horizontal.dragging {
+  background: var(--accent);
+}
+
+/* Toolbar: minimal, no border */
+[data-theme="tui"] .global-toolbar {
+  background: var(--bg-secondary);
+  border-bottom: none;
+  padding: 2px 8px;
+}
+
+[data-theme="tui"] .global-toolbar::before {
+  content: "╭─ PaneExplorer ";
+  color: var(--text-secondary);
+  margin-right: auto;
+  font-size: 11px;
+}
+
+[data-theme="tui"] .theme-btn {
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  font-size: 11px;
+  padding: 1px 8px;
+}
+
+[data-theme="tui"] .theme-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: none;
+}
+
+/* Context menu — clean bordered popup */
+[data-theme="tui"] .context-menu {
+  border: 1px solid var(--accent);
+  box-shadow: none;
+  background: var(--bg-secondary);
+}
+
+[data-theme="tui"] .context-menu-item:hover {
+  background: var(--bg-hover);
+  color: var(--accent);
+}
+
+/* Dialog — bordered panel */
+[data-theme="tui"] .dialog-overlay {
+  background: rgba(0, 0, 0, 0.6);
+}
+
+[data-theme="tui"] .dialog {
+  border: 1px solid var(--accent);
+  box-shadow: none;
+  background: var(--bg-secondary);
+}
+
+[data-theme="tui"] .dialog-title {
+  color: var(--accent);
+}
+
+[data-theme="tui"] .dialog-btn {
+  border: 1px solid var(--border-color);
+  background: none;
+  font-size: 12px;
+}
+
+[data-theme="tui"] .dialog-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: none;
+}
+
+[data-theme="tui"] .dialog-btn-danger {
+  border-color: var(--danger);
+  color: var(--danger);
+  background: none;
+}
+
+[data-theme="tui"] .dialog-btn-danger:hover {
+  background: var(--danger);
+  color: #ffffff;
+  filter: none;
+}
+
+[data-theme="tui"] .dialog-btn-primary {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: none;
+}
+
+[data-theme="tui"] .dialog-btn-primary:hover {
+  background: var(--accent);
+  color: var(--bg-primary);
+  filter: none;
+}
+
+/* Drop target */
+[data-theme="tui"] .pane-list.drop-target {
+  background: rgba(122, 162, 247, 0.05);
+  outline: 1px solid var(--accent);
+}
+
+/* Scrollbar — minimal */
+[data-theme="tui"] .pane-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+[data-theme="tui"] .pane-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+[data-theme="tui"] .pane-list::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+}
+
+[data-theme="tui"] .pane-list::-webkit-scrollbar-thumb:hover {
+  background: var(--accent);
+}
+
+/* Rename/License inputs */
+[data-theme="tui"] .rename-input {
+  background: var(--bg-primary);
+  border: 1px solid var(--accent);
+}
+
+[data-theme="tui"] .license-input {
+  border: 1px solid var(--border-color);
+}
+
+[data-theme="tui"] .license-input:focus {
+  border-color: var(--accent);
+}
+
+/* Drag ghost */
+[data-theme="tui"] .drag-ghost {
+  border: 1px solid var(--accent);
+  box-shadow: none;
 }

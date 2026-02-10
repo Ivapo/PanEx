@@ -3,6 +3,7 @@ import type { FileEntry, PaneState, LayoutNode, LayoutSplit, SplitDirection } fr
 import { createPane, loadDirectory, navigateInto, navigateUp, renderPane } from "./pane.ts";
 import { countLeaves, splitPane, removePane } from "./layout.ts";
 import { canAddPane, setLicenseKey } from "./licensing.ts";
+import { initTheme, cycleTheme, getTheme } from "./theme.ts";
 
 let layoutRoot: LayoutNode;
 const paneMap = new Map<string, PaneState>();
@@ -13,7 +14,15 @@ function nextPaneId(): string {
   return "pane-" + paneCounter++;
 }
 
+const THEME_LABELS: Record<string, string> = {
+  dark: "Dark",
+  light: "Gay",
+  "3.1": "3.1",
+  tui: "TUI",
+};
+
 async function init() {
+  initTheme();
   homePath = await invoke<string>("get_home_dir");
 
   const leftId = nextPaneId();
@@ -40,6 +49,20 @@ function renderLayout() {
   const app = document.getElementById("app");
   if (!app) return;
   app.innerHTML = "";
+
+  // Global toolbar
+  const toolbar = document.createElement("div");
+  toolbar.className = "global-toolbar";
+
+  const themeBtn = document.createElement("button");
+  themeBtn.className = "theme-btn";
+  themeBtn.textContent = THEME_LABELS[getTheme()] ?? "Dark";
+  themeBtn.addEventListener("click", () => {
+    cycleTheme();
+    themeBtn.textContent = THEME_LABELS[getTheme()] ?? "Dark";
+  });
+  toolbar.appendChild(themeBtn);
+  app.appendChild(toolbar);
 
   const totalPanes = countLeaves(layoutRoot);
   const el = renderNode(layoutRoot, totalPanes);
