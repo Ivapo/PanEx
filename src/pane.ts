@@ -11,12 +11,13 @@ export function createPane(id: string, initialPath: string): PaneState {
     lastClickedPath: null,
     expandedPaths: new Set(),
     childrenCache: new Map(),
+    focusIndex: -1,
   };
 }
 
 export async function loadDirectory(pane: PaneState): Promise<PaneState> {
   const entries = await fs.readDir(pane.currentPath);
-  return { ...pane, entries, selectedPaths: new Set(), lastClickedPath: null };
+  return { ...pane, entries, selectedPaths: new Set(), lastClickedPath: null, focusIndex: entries.length > 0 ? 0 : -1 };
 }
 
 export async function navigateUp(pane: PaneState): Promise<PaneState> {
@@ -45,6 +46,9 @@ export interface PaneCallbacks {
   getDragEntries: (entry: FileEntry) => FileEntry[];
   onToggleExpand: (entry: FileEntry) => void;
   onSelect: (entry: FileEntry, modifiers: { shift: boolean; metaOrCtrl: boolean }) => void;
+  onCopy: () => void;
+  onCut: () => void;
+  onPaste: () => void;
   onSplitRight?: () => void;
   onSplitBottom?: () => void;
   onClose?: () => void;
@@ -157,7 +161,8 @@ export function renderPane(
     0
   );
 
-  for (const { entry, depth } of displayList) {
+  for (let i = 0; i < displayList.length; i++) {
+    const { entry, depth } = displayList[i]!;
     const row = document.createElement("div");
     const selected = pane.selectedPaths.has(entry.path);
     row.className = `pane-row${entry.is_dir ? " is-dir" : ""}${selected ? " selected" : ""}`;
@@ -248,9 +253,12 @@ export function renderPane(
 
     row.addEventListener("contextmenu", (e) => {
       e.preventDefault();
+      const isMac = navigator.platform.toUpperCase().includes("MAC");
+      const mod = isMac ? "\u2318" : "Ctrl+";
       showContextMenu(e.clientX, e.clientY, [
         {
           label: "Open",
+          shortcut: "Enter",
           action: () => {
             if (entry.is_dir) {
               callbacks.onNavigate(entry);
@@ -260,11 +268,28 @@ export function renderPane(
           },
         },
         {
+          label: "Copy",
+          shortcut: `${mod}C`,
+          action: () => callbacks.onCopy(),
+        },
+        {
+          label: "Cut",
+          shortcut: `${mod}X`,
+          action: () => callbacks.onCut(),
+        },
+        {
+          label: "Paste",
+          shortcut: `${mod}V`,
+          action: () => callbacks.onPaste(),
+        },
+        {
           label: "Rename",
+          shortcut: "F2",
           action: () => startInlineRename(row, name, entry, callbacks.onRename),
         },
         {
           label: "Delete",
+          shortcut: isMac ? "\u2318\u232B" : "Del",
           action: () => callbacks.onDelete(entry),
         },
       ]);

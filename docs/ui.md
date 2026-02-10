@@ -2,9 +2,9 @@
 
 ## Themes
 
-Three switchable themes, toggled via a button in the global toolbar at the top of the window. The selected theme persists across restarts via `localStorage` (key: `paneexplorer_theme`). The active theme is applied as a `data-theme` attribute on the `<html>` element; CSS custom properties are overridden per theme.
+Four switchable themes, toggled via a button in the global toolbar at the top of the window. The selected theme persists across restarts via `localStorage` (key: `paneexplorer_theme`). The active theme is applied as a `data-theme` attribute on the `<html>` element; CSS custom properties are overridden per theme.
 
-Clicking the theme button cycles: **Dark → Light → TUI → Dark**.
+Clicking the theme button cycles: **Dark → Light → 3.1 → TUI → Dark**.
 
 ### Dark (default — Catppuccin Mocha)
 
@@ -75,23 +75,64 @@ The new pane opens to the same directory as the pane it was split from. Splits c
 ### Pane Navigation
 Each pane header has a back button (arrow) and a home button (house icon). The back button navigates to the parent directory. The home button navigates to the user's home directory.
 
+### Keyboard Shortcuts
+
+Full keyboard navigation is supported. Shortcuts are platform-aware — modifiers adjust for Mac vs Windows, and for desktop (Tauri) vs web (browser) to avoid conflicts with browser defaults.
+
+**Focus cursor**: A distinct outline ring shows which row the keyboard cursor is on, separate from the selection highlight. The cursor only appears in the active pane and only during keyboard navigation — mouse movement hides it. `Esc` clears selection and exits keyboard nav mode.
+
+**Hover suppression**: During keyboard navigation, a `.keyboard-nav` CSS class is added to panes to suppress hover highlights, preventing two rows from being visually emphasized at once. Mouse movement removes this class.
+
+| Category | Action | Mac | Windows |
+|----------|--------|-----|---------|
+| Navigation | Move up/down | `↑` / `↓` | same |
+| | Open / enter folder | `Enter` | same |
+| | Go up directory | `Backspace` | same |
+| | Switch pane | `Tab` | same |
+| | Deselect / exit nav | `Esc` | same |
+| Selection | Extend selection | `Shift+↑/↓` | same |
+| | Select all | `⌘A` | `Ctrl+A` |
+| File Ops | Copy | `⌘C` | `Ctrl+C` |
+| | Cut | `⌘X` | `Ctrl+X` |
+| | Paste | `⌘V` | `Ctrl+V` |
+| | Delete | `⌘⌫` | `Delete` |
+| | Rename | `F2` | same |
+| Pane Mgmt | Split right | `⌘→` | `Ctrl+→` |
+| | Split down | `⌘↓` | `Ctrl+↓` |
+| | Close pane | `⌘W` | `Ctrl+W` |
+| Other | Toggle hidden files | `⌘.` | `Ctrl+.` |
+
+**Web-specific**: Split shortcuts use an extra `Alt` modifier (`⌘⌥→` / `Ctrl+Alt+→`) to avoid browser conflicts. Close pane has no web shortcut (`⌘W` / `Ctrl+W` would close the browser tab).
+
+**Guard conditions**: Shortcuts are disabled when a dialog overlay is open or an input/textarea is focused (e.g., during inline rename).
+
+**Data model**: `focusIndex: number` on `PaneState` tracks the keyboard cursor position within the flat display list. Set to `0` when loading a directory, `-1` when no focus. `activePaneId` tracks which pane receives keyboard input. A module-level `fileClipboard: { entries: FileEntry[], mode: 'copy' | 'cut' } | null` stores the in-app clipboard.
+
+### Hidden Files Toggle
+
+`⌘.` / `Ctrl+.` toggles visibility of dotfiles (files/folders starting with `.`). The state is tracked by a module-level `showHidden` boolean. When toggled, all panes reload from disk and re-filter. Expanded folder children also respect the filter.
+
 ### Context Menu
-Right-click (or Ctrl+click on Mac) a file/folder row to show a floating context menu with Open, Rename, and Delete options. Auto-dismisses on click outside, Escape, or another right-click. Repositions if it would overflow the window edge.
+Right-click (or Ctrl+click on Mac) a file/folder row to show a floating context menu with Open, Copy, Cut, Paste, Rename, and Delete options. Each item shows its keyboard shortcut hint on the right side. Auto-dismisses on click outside, Escape, or another right-click. Repositions if it would overflow the window edge.
 
 ### Inline Rename
 Triggered from context menu. Replaces the filename span with a text input. For files, only the name (not extension) is selected. Enter commits the rename, Escape or blur cancels.
 
 ### Delete Confirmation Dialog
-Modal overlay with "Move to Trash" and "Cancel" buttons. Cancel is focused by default (safety). Dismisses on Escape or clicking outside the dialog. Uses a red accent (`var(--danger)`) for the danger button.
+Modal overlay with "Move to Trash" and "Cancel" buttons. Cancel is focused by default (safety). Dismisses on Escape or clicking outside the dialog. Uses a red accent (`var(--danger)`) for the danger button. Supports multi-delete — when multiple items are selected, the prompt shows the count (e.g., "Move 5 items to Trash?"). All dialogs are draggable by their title bar.
 
 ### File Selection
-Click a file or folder row to select it. Only one pane can have an active selection at a time — clicking in another pane clears the previous one's selection. Selection resets when navigating into a folder, going up, or going home.
+Click a file or folder row to select it. Only one pane can have an active selection at a time — clicking in another pane clears the previous one's selection. Selection resets when navigating into a folder, going up, or going home. Clicking anywhere on a pane (header, empty space, rows) makes it the active pane.
 
 | Action | Result |
 |--------|--------|
 | Click row | Select (clears previous selection) |
 | Cmd/Ctrl + click | Toggle item in/out of selection |
 | Shift + click | Range select from last clicked item |
+| `↑` / `↓` | Move focus cursor + select |
+| `Shift+↑` / `Shift+↓` | Extend selection from cursor |
+| `⌘A` / `Ctrl+A` | Select all |
+| `Esc` | Deselect all |
 | Click in different pane | Clears other pane's selection |
 
 **Multi-drag**: Dragging a selected item drags all selected items together. The drag ghost shows the item count (e.g. "3 items"). Dragging an unselected item drags only that one. Conflict resolution dialogs appear per-file when dropping multiple items.
@@ -121,7 +162,7 @@ Drag files or folders from one pane and drop them onto any other pane's file lis
 - **Visual feedback**: The dragged row gets reduced opacity (0.4). The target pane's file list gets an accent-colored outline highlight. A compact drag ghost shows the icon + filename for single items, or "N items" for multi-selection.
 - **Name conflict dialog**: When dropping multiple files, conflict resolution is handled per-file. When a file with the same name already exists in the target, a modal appears with three choices:
   - **Replace** — Deletes the existing file in the target, then performs the move/copy.
-  - **Keep Both** — Performs the move/copy, then auto-renames the new file with a ` (2)` suffix (incrementing if needed).
+  - **Add Copy** — Creates a duplicate with a ` (2)` suffix (incrementing if needed). For same-directory paste, stages through the parent directory to create a real copy.
   - **Cancel** — Aborts the operation.
 
 **Tauri note**: Native `dragDropEnabled` is set to `false` in `tauri.conf.json` so that Tauri doesn't intercept HTML5 drag-and-drop events within the webview. The `text/plain` MIME type is used for `dataTransfer` instead of a custom type for WebKit compatibility.

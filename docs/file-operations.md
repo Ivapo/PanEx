@@ -15,6 +15,18 @@ All filesystem and OS operations go through Rust via Tauri commands. The fronten
 | `copy_entry` | `fs_ops::copy_entry` | Copies a file or directory (recursively) to a destination directory. Returns the destination path. |
 | `move_entry` | `fs_ops::move_entry` | Moves a file or directory to a destination directory. Tries `fs::rename` first (fast, same volume), falls back to copy + delete for cross-volume moves. Returns the destination path. |
 
+## Copy / Cut / Paste (In-App Clipboard)
+
+File copy/cut/paste uses an in-app clipboard (`fileClipboard` in `main.ts`), not the system clipboard. This allows copying files between panes without relying on OS clipboard APIs.
+
+- **Copy** (`⌘C` / `Ctrl+C` or context menu): Stores selected entries with mode `copy`.
+- **Cut** (`⌘X` / `Ctrl+X` or context menu): Stores selected entries with mode `cut`. Clipboard is cleared after pasting.
+- **Paste** (`⌘V` / `Ctrl+V` or context menu): Pastes into the active pane's current directory.
+
+**Cross-directory paste**: Uses the same `handleDrop` logic as drag-and-drop (copy or move based on clipboard mode).
+
+**Same-directory paste**: Detected when the source entries' parent matches the destination directory. Shows a conflict dialog with "Add Copy" / "Replace" / "Cancel". The "Add Copy" option stages through the parent directory to create a real duplicate (since `copyEntry` to the same directory is a no-op), then moves the staged copy back with a unique name.
+
 ## Design Decisions
 
 - **Rust-only filesystem access**: We initially used `@tauri-apps/plugin-shell` for opening files from the frontend, but it silently failed. Switching to a Rust command using `std::process::Command` was more reliable and consistent with the "all operations through Rust" pattern. The shell plugin was fully removed.

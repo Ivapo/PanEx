@@ -1,5 +1,6 @@
 export interface MenuItem {
   label: string;
+  shortcut?: string;
   action: () => void;
 }
 
@@ -21,7 +22,18 @@ export function showContextMenu(x: number, y: number, items: MenuItem[]) {
   for (const item of items) {
     const menuItem = document.createElement("div");
     menuItem.className = "context-menu-item";
-    menuItem.textContent = item.label;
+
+    const label = document.createElement("span");
+    label.textContent = item.label;
+    menuItem.appendChild(label);
+
+    if (item.shortcut) {
+      const shortcut = document.createElement("span");
+      shortcut.className = "context-menu-shortcut";
+      shortcut.textContent = item.shortcut;
+      menuItem.appendChild(shortcut);
+    }
+
     menuItem.addEventListener("click", (e) => {
       e.stopPropagation();
       removeActiveMenu();

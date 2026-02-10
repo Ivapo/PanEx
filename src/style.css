@@ -243,6 +243,10 @@ body {
   overflow: hidden;
 }
 
+.pane.active-pane .pane-header {
+  border-bottom-color: var(--accent);
+}
+
 .divider-vertical {
   width: 4px;
   background: var(--border-color);
@@ -331,10 +335,24 @@ body {
 }
 
 .pane-row.selected {
-  background: var(--bg-hover);
+  background: rgba(137, 180, 250, 0.18);
+}
+
+.pane-row.focus-cursor:not(.selected) {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
 }
 
 .pane-row:hover {
+  background: var(--bg-hover);
+}
+
+/* Suppress hover during keyboard navigation */
+.pane.keyboard-nav .pane-row:hover {
+  background: none;
+}
+
+.pane.keyboard-nav .pane-row.selected:hover {
   background: var(--bg-hover);
 }
 
@@ -405,9 +423,19 @@ body {
 }
 
 .context-menu-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-lg);
   padding: var(--spacing-sm) var(--spacing-lg);
   cursor: default;
   user-select: none;
+}
+
+.context-menu-shortcut {
+  color: var(--text-secondary);
+  font-size: 11px;
+  opacity: 0.7;
 }
 
 .context-menu-item:hover {
@@ -590,6 +618,10 @@ body {
   filter: brightness(1.1);
 }
 
+[data-theme="light"] .pane-row.selected {
+  background: rgba(30, 102, 245, 0.14);
+}
+
 /* ==============================
    3.1 Theme Overrides
    Midnight Commander / Norton Commander style
@@ -702,6 +734,12 @@ body {
   border-bottom: none;
 }
 
+/* Focus cursor — bright border */
+[data-theme="3.1"] .pane-row.focus-cursor:not(.selected) {
+  outline: 1px solid #ffffff;
+  outline-offset: -1px;
+}
+
 /* Block-style selected: full invert like cursor selection */
 [data-theme="3.1"] .pane-row.selected {
   background: var(--accent);
@@ -715,17 +753,14 @@ body {
   color: var(--tui-hover-text);
 }
 
-/* Block-style hover: full invert like cursor selection */
+/* Hover: darker blue to distinguish from yellow selected */
 [data-theme="3.1"] .pane-row:hover {
-  background: var(--accent);
-  color: var(--tui-hover-text);
+  background: #003d7a;
 }
 
-[data-theme="3.1"] .pane-row:hover .entry-name,
-[data-theme="3.1"] .pane-row:hover .entry-size,
-[data-theme="3.1"] .pane-row:hover .entry-icon,
-[data-theme="3.1"] .pane-row:hover .folder-toggle {
-  color: var(--tui-hover-text);
+/* Suppress hover during keyboard navigation */
+[data-theme="3.1"] .pane.keyboard-nav .pane-row:hover {
+  background: none;
 }
 
 [data-theme="3.1"] .pane-row.is-dir .entry-name {
@@ -1032,12 +1067,27 @@ body {
   border-left: 2px solid transparent;
 }
 
+[data-theme="tui"] .pane-row.focus-cursor:not(.selected) {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+
 [data-theme="tui"] .pane-row.selected {
   background: var(--bg-hover);
   border-left-color: var(--accent);
 }
 
 [data-theme="tui"] .pane-row:hover {
+  background: var(--bg-hover);
+}
+
+/* Suppress hover during keyboard navigation */
+[data-theme="tui"] .pane.keyboard-nav .pane-row:hover {
+  background: none;
+  border-left-color: transparent;
+}
+
+[data-theme="tui"] .pane.keyboard-nav .pane-row.selected:hover {
   background: var(--bg-hover);
   border-left-color: var(--accent);
 }

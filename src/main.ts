@@ -1,7 +1,7 @@
 import { fs, isBrowser } from "./fs.ts";
 import type { FileEntry, PaneState, LayoutNode, LayoutSplit, SplitDirection } from "./types.ts";
 import { createPane, loadDirectory, navigateInto, navigateUp, renderPane, buildDisplayList } from "./pane.ts";
-import { countLeaves, splitPane, removePane } from "./layout.ts";
+import { countLeaves, splitPane, removePane, collectLeafIds } from "./layout.ts";
 import { canAddPane, setLicenseKey } from "./licensing.ts";
 import { initTheme, cycleTheme, getTheme } from "./theme.ts";
 
@@ -11,6 +11,8 @@ let homePath = "";
 let paneCounter = 0;
 let bannerDismissed = false;
 let activePaneId: string | null = null;
+let showHidden = false;
+let fileClipboard: { entries: FileEntry[]; mode: "copy" | "cut" } | null = null;
 
 function nextPaneId(): string {
   return "pane-" + paneCounter++;
@@ -22,6 +24,346 @@ const THEME_LABELS: Record<string, string> = {
   "3.1": "3.1",
   tui: "TUI",
 };
+
+function filterHidden(pane: PaneState): PaneState {
+  if (showHidden) return pane;
+  const entries = pane.entries.filter((e) => !e.name.startsWith("."));
+  return { ...pane, entries, focusIndex: entries.length > 0 ? Math.min(pane.focusIndex, entries.length - 1) : -1 };
+}
+
+function getActivePane(): PaneState | null {
+  if (!activePaneId) return null;
+  return paneMap.get(activePaneId) ?? null;
+}
+
+function getDisplayList(pane: PaneState): Array<{ entry: FileEntry; depth: number }> {
+  return buildDisplayList(pane.entries, pane.expandedPaths, pane.childrenCache, 0);
+}
+
+function updateFocusCursorDOM() {
+  for (const [id, pane] of paneMap) {
+    const container = document.querySelector(`.pane[data-pane-id="${id}"]`);
+    if (!container) continue;
+    const rows = container.querySelectorAll<HTMLElement>(".pane-row");
+    rows.forEach((row, i) => {
+      row.classList.toggle("focus-cursor", id === activePaneId && i === pane.focusIndex);
+    });
+  }
+}
+
+function updateActivePaneDOM() {
+  document.querySelectorAll<HTMLElement>(".pane").forEach((el) => {
+    el.classList.toggle("active-pane", el.dataset.paneId === activePaneId);
+  });
+}
+
+function scrollFocusedRowIntoView() {
+  if (!activePaneId) return;
+  const container = document.querySelector(`.pane[data-pane-id="${activePaneId}"]`);
+  if (!container) return;
+  const focused = container.querySelector<HTMLElement>(".pane-row.focus-cursor");
+  if (focused) focused.scrollIntoView({ block: "nearest" });
+}
+
+function setKeyboardNav(on: boolean) {
+  document.querySelectorAll<HTMLElement>(".pane").forEach((el) => {
+    el.classList.toggle("keyboard-nav", on);
+  });
+}
+
+function setupKeyboardShortcuts() {
+  // Mouse movement exits keyboard-nav mode
+  document.addEventListener("mousemove", () => {
+    setKeyboardNav(false);
+  });
+
+  document.addEventListener("keydown", (e) => {
+    // Skip if a dialog is open
+    if (document.querySelector(".dialog-overlay")) return;
+    // Skip if an input/textarea is focused
+    const tag = (document.activeElement?.tagName ?? "").toLowerCase();
+    if (tag === "input" || tag === "textarea" || tag === "select") return;
+
+    const isMac = navigator.platform.toUpperCase().includes("MAC");
+    const mod = isMac ? e.metaKey : e.ctrlKey;
+    const web = isBrowser();
+    const pane = getActivePane();
+
+    // Split right: Cmd+Right (desktop) or Cmd+Alt+Right (web)
+    if (e.key === "ArrowRight" && mod && (!web || e.altKey)) {
+      if (!activePaneId) return;
+      e.preventDefault();
+      handleSplitPane(activePaneId, "vertical");
+      return;
+    }
+
+    // Split down: Cmd+Down (desktop) or Cmd+Alt+Down (web)
+    if (e.key === "ArrowDown" && mod && (!web || e.altKey)) {
+      if (!activePaneId) return;
+      e.preventDefault();
+      handleSplitPane(activePaneId, "horizontal");
+      return;
+    }
+
+    // Arrow up/down — move focus cursor (must be after split checks)
+    if ((e.key === "ArrowUp" || e.key === "ArrowDown") && !mod) {
+      e.preventDefault();
+      setKeyboardNav(true);
+      if (!pane || !activePaneId) return;
+      const dl = getDisplayList(pane);
+      if (dl.length === 0) return;
+
+      const delta = e.key === "ArrowUp" ? -1 : 1;
+      let newIndex = pane.focusIndex + delta;
+      if (newIndex < 0) newIndex = 0;
+      if (newIndex >= dl.length) newIndex = dl.length - 1;
+
+      const focusedEntry = dl[newIndex]!.entry;
+
+      if (e.shiftKey) {
+        // Shift+arrow: extend selection
+        const selectedPaths = new Set(pane.selectedPaths);
+        selectedPaths.add(focusedEntry.path);
+        paneMap.set(activePaneId, { ...pane, focusIndex: newIndex, selectedPaths, lastClickedPath: focusedEntry.path });
+      } else {
+        // Plain arrow: move + single select
+        paneMap.set(activePaneId, {
+          ...pane,
+          focusIndex: newIndex,
+          selectedPaths: new Set([focusedEntry.path]),
+          lastClickedPath: focusedEntry.path,
+        });
+      }
+      updateSelectionDOM();
+      updateFocusCursorDOM();
+      scrollFocusedRowIntoView();
+      return;
+    }
+
+    // Enter — open / navigate into focused item
+    if (e.key === "Enter") {
+      if (!pane || !activePaneId) return;
+      const dl = getDisplayList(pane);
+      const focused = dl[pane.focusIndex];
+      if (!focused) return;
+      e.preventDefault();
+      if (focused.entry.is_dir) {
+        handleNavigate(activePaneId, focused.entry);
+      } else {
+        handleOpen(focused.entry);
+      }
+      return;
+    }
+
+    // Cmd+Backspace (Mac) or Delete key — delete selected items
+    if ((e.key === "Backspace" && mod) || e.key === "Delete") {
+      if (!pane || !activePaneId) return;
+      e.preventDefault();
+      const dl = getDisplayList(pane);
+      const selected = dl.filter((item) => pane.selectedPaths.has(item.entry.path)).map((item) => item.entry);
+      if (selected.length === 1) {
+        handleDelete(activePaneId, selected[0]!);
+      } else if (selected.length > 1) {
+        handleDeleteMultiple(activePaneId, selected);
+      }
+      return;
+    }
+
+    // Escape — deselect and exit keyboard nav
+    if (e.key === "Escape") {
+      if (!pane || !activePaneId) return;
+      e.preventDefault();
+      paneMap.set(activePaneId, { ...pane, selectedPaths: new Set(), lastClickedPath: null, focusIndex: -1 });
+      setKeyboardNav(false);
+      updateSelectionDOM();
+      updateFocusCursorDOM();
+      return;
+    }
+
+    // Backspace (plain) — navigate up
+    if (e.key === "Backspace") {
+      if (!activePaneId) return;
+      e.preventDefault();
+      handleNavigateUp(activePaneId);
+      return;
+    }
+
+    // Home — go to home directory
+    if (e.key === "Home") {
+      if (!activePaneId) return;
+      e.preventDefault();
+      handleHome(activePaneId);
+      return;
+    }
+
+    // Tab — switch pane focus
+    if (e.key === "Tab" && !mod && !e.shiftKey) {
+      e.preventDefault();
+      const leafIds = collectLeafIds(layoutRoot);
+      if (leafIds.length === 0) return;
+      const currentIdx = activePaneId ? leafIds.indexOf(activePaneId) : -1;
+      const nextIdx = (currentIdx + 1) % leafIds.length;
+      // Clear selection in old pane
+      if (activePaneId) {
+        const old = paneMap.get(activePaneId);
+        if (old) paneMap.set(activePaneId, { ...old, selectedPaths: new Set(), lastClickedPath: null });
+      }
+      activePaneId = leafIds[nextIdx]!;
+      // Select focused item in new pane
+      const newPane = paneMap.get(activePaneId);
+      if (newPane) {
+        const dl = getDisplayList(newPane);
+        const idx = newPane.focusIndex >= 0 && newPane.focusIndex < dl.length ? newPane.focusIndex : 0;
+        const entry = dl[idx];
+        if (entry) {
+          paneMap.set(activePaneId, { ...newPane, focusIndex: idx, selectedPaths: new Set([entry.entry.path]), lastClickedPath: entry.entry.path });
+        }
+      }
+      updateSelectionDOM();
+      updateFocusCursorDOM();
+      updateActivePaneDOM();
+      scrollFocusedRowIntoView();
+      return;
+    }
+
+    // Cmd+A / Ctrl+A — select all
+    if (mod && e.key === "a") {
+      e.preventDefault();
+      if (!pane || !activePaneId) return;
+      const dl = getDisplayList(pane);
+      const allPaths = new Set(dl.map((item) => item.entry.path));
+      paneMap.set(activePaneId, { ...pane, selectedPaths: allPaths });
+      updateSelectionDOM();
+      return;
+    }
+
+    // F2 — rename focused item
+    if (e.key === "F2") {
+      if (!pane || !activePaneId) return;
+      e.preventDefault();
+      const dl = getDisplayList(pane);
+      const focused = dl[pane.focusIndex];
+      if (!focused) return;
+      // Trigger inline rename on the focused row
+      const container = document.querySelector(`.pane[data-pane-id="${activePaneId}"]`);
+      if (!container) return;
+      const rows = container.querySelectorAll<HTMLElement>(".pane-row");
+      const row = rows[pane.focusIndex];
+      if (!row) return;
+      const nameSpan = row.querySelector<HTMLSpanElement>(".entry-name");
+      if (!nameSpan) return;
+      startInlineRenameFromKeyboard(row, nameSpan, focused.entry, activePaneId);
+      return;
+    }
+
+    // Cmd+C / Ctrl+C — copy
+    if (mod && e.key === "c") {
+      if (!activePaneId) return;
+      e.preventDefault();
+      handleCopy(activePaneId);
+      return;
+    }
+
+    // Cmd+X / Ctrl+X — cut
+    if (mod && e.key === "x") {
+      if (!activePaneId) return;
+      e.preventDefault();
+      handleCut(activePaneId);
+      return;
+    }
+
+    // Cmd+V / Ctrl+V — paste
+    if (mod && e.key === "v") {
+      if (!activePaneId || !fileClipboard) return;
+      e.preventDefault();
+      handlePaste(activePaneId);
+      return;
+    }
+
+    // Close pane: Cmd+W (desktop only)
+    if (e.key === "w" && mod && !web) {
+      if (!activePaneId) return;
+      e.preventDefault();
+      handleClosePane(activePaneId);
+      return;
+    }
+
+    // Toggle hidden files: Cmd+. / Ctrl+.
+    if (mod && e.key === ".") {
+      e.preventDefault();
+      showHidden = !showHidden;
+      refilterAllPanes();
+      return;
+    }
+  });
+}
+
+function startInlineRenameFromKeyboard(
+  row: HTMLElement,
+  nameSpan: HTMLSpanElement,
+  entry: FileEntry,
+  paneId: string
+) {
+  const input = document.createElement("input");
+  input.type = "text";
+  input.className = "rename-input";
+  input.value = entry.name;
+
+  nameSpan.replaceWith(input);
+  input.focus();
+
+  if (!entry.is_dir) {
+    const dotIndex = entry.name.lastIndexOf(".");
+    if (dotIndex > 0) {
+      input.setSelectionRange(0, dotIndex);
+    } else {
+      input.select();
+    }
+  } else {
+    input.select();
+  }
+
+  let committed = false;
+
+  function commit() {
+    if (committed) return;
+    committed = true;
+    const newName = input.value.trim();
+    input.replaceWith(nameSpan);
+    if (newName && newName !== entry.name) {
+      handleRename(paneId, entry, newName);
+    }
+  }
+
+  function cancel() {
+    if (committed) return;
+    committed = true;
+    input.replaceWith(nameSpan);
+  }
+
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); commit(); }
+    else if (e.key === "Escape") { e.preventDefault(); cancel(); }
+  });
+
+  input.addEventListener("blur", () => {
+    requestAnimationFrame(cancel);
+  });
+}
+
+async function refilterAllPanes() {
+  // Reload all panes from disk to get fresh entries, then filter
+  const reloads: Promise<void>[] = [];
+  for (const [id, pane] of paneMap) {
+    reloads.push(
+      loadDirectory(pane).then((updated) => {
+        paneMap.set(id, filterHidden(updated));
+      })
+    );
+  }
+  await Promise.all(reloads);
+  renderLayout();
+}
 
 async function init() {
   initTheme();
@@ -97,11 +439,13 @@ async function initPanes() {
   const leftId = nextPaneId();
   const rightId = nextPaneId();
 
-  const leftPane = await loadDirectory(createPane(leftId, homePath));
-  const rightPane = await loadDirectory(createPane(rightId, homePath));
+  const leftPane = filterHidden(await loadDirectory(createPane(leftId, homePath)));
+  const rightPane = filterHidden(await loadDirectory(createPane(rightId, homePath)));
 
   paneMap.set(leftId, leftPane);
   paneMap.set(rightId, rightPane);
+
+  activePaneId = leftId;
 
   layoutRoot = {
     type: "split",
@@ -111,6 +455,7 @@ async function initPanes() {
     ratio: 0.5,
   };
 
+  setupKeyboardShortcuts();
   renderLayout();
 }
 
@@ -154,6 +499,8 @@ function renderLayout() {
   const totalPanes = countLeaves(layoutRoot);
   const el = renderNode(layoutRoot, totalPanes);
   app.appendChild(el);
+  updateActivePaneDOM();
+  updateFocusCursorDOM();
 }
 
 function renderNode(node: LayoutNode, totalPanes: number): HTMLElement {
@@ -168,7 +515,7 @@ function renderNode(node: LayoutNode, totalPanes: number): HTMLElement {
     const showClose = totalPanes > 2;
     const paneId = node.paneId;
 
-    return renderPane(pane, paneId, {
+    const paneEl = renderPane(pane, paneId, {
       onNavigate: (entry: FileEntry) => handleNavigate(paneId, entry),
       onNavigateUp: () => handleNavigateUp(paneId),
       onHome: () => handleHome(paneId),
@@ -188,10 +535,22 @@ function renderNode(node: LayoutNode, totalPanes: number): HTMLElement {
       onToggleExpand: (entry: FileEntry) => handleToggleExpand(paneId, entry),
       onSelect: (entry: FileEntry, modifiers: { shift: boolean; metaOrCtrl: boolean }) =>
         handleSelect(paneId, entry, modifiers),
+      onCopy: () => handleCopy(paneId),
+      onCut: () => handleCut(paneId),
+      onPaste: () => handlePaste(paneId),
       onSplitRight: () => handleSplitPane(paneId, "vertical"),
       onSplitBottom: () => handleSplitPane(paneId, "horizontal"),
       onClose: showClose ? () => handleClosePane(paneId) : undefined,
     });
+
+    paneEl.addEventListener("mousedown", () => {
+      if (activePaneId !== paneId) {
+        activePaneId = paneId;
+        updateActivePaneDOM();
+      }
+    });
+
+    return paneEl;
   }
 
   // Split node
@@ -263,9 +622,9 @@ async function handleSplitPane(paneId: string, direction: SplitDirection) {
 
   const sourcePane = paneMap.get(paneId);
   const newId = nextPaneId();
-  const newPane = await loadDirectory(
+  const newPane = filterHidden(await loadDirectory(
     createPane(newId, sourcePane ? sourcePane.currentPath : homePath)
-  );
+  ));
   paneMap.set(newId, newPane);
 
   layoutRoot = splitPane(layoutRoot, paneId, newId, direction);
@@ -278,6 +637,10 @@ function handleClosePane(paneId: string) {
   if (!newRoot) return;
   layoutRoot = newRoot;
   paneMap.delete(paneId);
+  if (activePaneId === paneId) {
+    const leafIds = collectLeafIds(layoutRoot);
+    activePaneId = leafIds[0] ?? null;
+  }
   renderLayout();
 }
 
@@ -328,6 +691,7 @@ function showLicensePrompt(): Promise<boolean> {
     dialog.appendChild(actions);
     overlay.appendChild(dialog);
     document.body.appendChild(overlay);
+    makeDialogDraggable(dialog, titleEl);
 
     input.focus();
 
@@ -392,6 +756,8 @@ function handleSelect(
   const pane = paneMap.get(paneId);
   if (!pane) return;
 
+  const displayList = buildDisplayList(pane.entries, pane.expandedPaths, pane.childrenCache, 0);
+  const clickedIndex = displayList.findIndex((item) => item.entry.path === entry.path);
   const selectedPaths = new Set(pane.selectedPaths);
 
   if (modifiers.metaOrCtrl) {
@@ -401,15 +767,9 @@ function handleSelect(
     } else {
       selectedPaths.add(entry.path);
     }
-    paneMap.set(paneId, { ...pane, selectedPaths, lastClickedPath: entry.path });
+    paneMap.set(paneId, { ...pane, selectedPaths, lastClickedPath: entry.path, focusIndex: clickedIndex });
   } else if (modifiers.shift && pane.lastClickedPath) {
     // Shift+click: range select
-    const displayList = buildDisplayList(
-      pane.entries,
-      pane.expandedPaths,
-      pane.childrenCache,
-      0
-    );
     const paths = displayList.map((item) => item.entry.path);
     const anchorIdx = paths.indexOf(pane.lastClickedPath);
     const targetIdx = paths.indexOf(entry.path);
@@ -422,7 +782,7 @@ function handleSelect(
         const p = paths[i];
         if (p) rangeSelection.add(p);
       }
-      paneMap.set(paneId, { ...pane, selectedPaths: rangeSelection });
+      paneMap.set(paneId, { ...pane, selectedPaths: rangeSelection, focusIndex: clickedIndex });
     }
   } else {
     // Plain click: clear selection, select this one
@@ -430,10 +790,13 @@ function handleSelect(
       ...pane,
       selectedPaths: new Set([entry.path]),
       lastClickedPath: entry.path,
+      focusIndex: clickedIndex,
     });
   }
 
   updateSelectionDOM();
+  updateFocusCursorDOM();
+  updateActivePaneDOM();
 }
 
 function updateSelectionDOM() {
@@ -472,7 +835,8 @@ async function handleToggleExpand(paneId: string, entry: FileEntry) {
     }
   } else {
     // Expand: load children
-    const children = await fs.readDir(entry.path);
+    let children = await fs.readDir(entry.path);
+    if (!showHidden) children = children.filter((e) => !e.name.startsWith("."));
     expandedPaths.add(entry.path);
     childrenCache.set(entry.path, children);
   }
@@ -486,13 +850,13 @@ async function handleNavigate(paneId: string, entry: FileEntry) {
   if (!pane) return;
   const navigated = await navigateInto(pane, entry);
   // Reset expansion state when navigating into a new directory
-  paneMap.set(paneId, {
+  paneMap.set(paneId, filterHidden({
     ...navigated,
     selectedPaths: new Set(),
     lastClickedPath: null,
     expandedPaths: new Set(),
     childrenCache: new Map(),
-  });
+  }));
   renderLayout();
 }
 
@@ -500,7 +864,7 @@ async function handleNavigateUp(paneId: string) {
   const pane = paneMap.get(paneId);
   if (!pane) return;
   const updated = await navigateUp(pane);
-  paneMap.set(paneId, { ...updated, selectedPaths: new Set(), lastClickedPath: null, expandedPaths: new Set(), childrenCache: new Map() });
+  paneMap.set(paneId, filterHidden({ ...updated, selectedPaths: new Set(), lastClickedPath: null, expandedPaths: new Set(), childrenCache: new Map() }));
   renderLayout();
 }
 
@@ -508,7 +872,7 @@ async function handleHome(paneId: string) {
   const pane = paneMap.get(paneId);
   if (!pane) return;
   const updated = await loadDirectory({ ...pane, currentPath: homePath });
-  paneMap.set(paneId, { ...updated, selectedPaths: new Set(), lastClickedPath: null, expandedPaths: new Set(), childrenCache: new Map() });
+  paneMap.set(paneId, filterHidden({ ...updated, selectedPaths: new Set(), lastClickedPath: null, expandedPaths: new Set(), childrenCache: new Map() }));
   renderLayout();
 }
 
@@ -555,6 +919,74 @@ async function handleDelete(paneId: string, entry: FileEntry) {
     }
   } catch (e) {
     alert(`Delete failed: ${e}`);
+  }
+}
+
+function handleCopy(paneId: string) {
+  const pane = paneMap.get(paneId);
+  if (!pane) return;
+  const dl = getDisplayList(pane);
+  const selected = dl.filter((item) => pane.selectedPaths.has(item.entry.path)).map((item) => item.entry);
+  if (selected.length === 0) return;
+  fileClipboard = { entries: selected, mode: "copy" };
+}
+
+function handleCut(paneId: string) {
+  const pane = paneMap.get(paneId);
+  if (!pane) return;
+  const dl = getDisplayList(pane);
+  const selected = dl.filter((item) => pane.selectedPaths.has(item.entry.path)).map((item) => item.entry);
+  if (selected.length === 0) return;
+  fileClipboard = { entries: selected, mode: "cut" };
+}
+
+function handlePaste(paneId: string) {
+  const pane = paneMap.get(paneId);
+  if (!pane || !fileClipboard) return;
+  const clipEntries = fileClipboard.entries;
+  const clipMode = fileClipboard.mode;
+  const destDir = pane.currentPath;
+  const srcDir = clipEntries[0]?.path.substring(0, clipEntries[0]!.path.lastIndexOf("/")) ?? "";
+
+  if (clipMode === "copy" && srcDir === destDir) {
+    handleSameDirPaste(paneId, clipEntries);
+  } else {
+    let sourcePaneId = "";
+    for (const [id, p] of paneMap) {
+      if (p.currentPath === srcDir) { sourcePaneId = id; break; }
+    }
+    if (!sourcePaneId) sourcePaneId = paneId;
+    handleDrop(paneId, clipEntries, sourcePaneId, clipMode === "copy");
+    if (clipMode === "cut") fileClipboard = null;
+  }
+}
+
+async function handleDeleteMultiple(paneId: string, entries: FileEntry[]) {
+  const deleteMessage = isBrowser()
+    ? `${entries.length} items will be permanently deleted.`
+    : `${entries.length} items will be moved to the Trash.`;
+  const deleteAction = isBrowser() ? "Delete" : "Move to Trash";
+
+  const confirmed = await showConfirmDialog(
+    isBrowser()
+      ? `Permanently delete ${entries.length} items?`
+      : `Move ${entries.length} items to Trash?`,
+    deleteMessage,
+    deleteAction
+  );
+  if (!confirmed) return;
+
+  for (const entry of entries) {
+    try {
+      await fs.deleteEntry(entry.path);
+    } catch (e) {
+      alert(`Failed to delete "${entry.name}": ${e}`);
+    }
+  }
+
+  const pane = paneMap.get(paneId);
+  if (pane) {
+    await refreshPanesShowingPaths(pane.currentPath);
   }
 }
 
@@ -618,13 +1050,40 @@ async function handleDrop(
   );
 }
 
+async function handleSameDirPaste(paneId: string, entries: FileEntry[]) {
+  const pane = paneMap.get(paneId);
+  if (!pane) return;
+  const destDir = pane.currentPath;
+  const parentDir = await fs.getParentDir(destDir);
+
+  for (const entry of entries) {
+    const choice = await showConflictDialog(entry.name);
+    if (choice === "cancel") return;
+
+    if (choice === "keep-both") {
+      const newName = generateUniqueName(entry.name, pane.entries);
+      try {
+        // Stage through parent directory to create a real copy
+        await fs.copyEntry(entry.path, parentDir);
+        await fs.renameEntry(parentDir + "/" + entry.name, newName);
+        await fs.moveEntry(parentDir + "/" + newName, destDir);
+      } catch (e) {
+        alert(`Copy failed: ${e}`);
+      }
+    }
+    // "replace" is a no-op for same-dir copy (file already is itself)
+  }
+
+  await refreshPanesShowingPaths(destDir);
+}
+
 async function refreshPanesShowingPaths(...paths: string[]) {
   const pathSet = new Set(paths);
   const reloads: Promise<void>[] = [];
   for (const [id, pane] of paneMap) {
     if (pathSet.has(pane.currentPath)) {
       reloads.push(
-        loadDirectory(pane).then((updated) => { paneMap.set(id, updated); })
+        loadDirectory(pane).then((updated) => { paneMap.set(id, filterHidden(updated)); })
       );
     }
   }
@@ -645,6 +1104,32 @@ function generateUniqueName(name: string, entries: FileEntry[]): string {
     candidate = `${baseName} (${counter})${ext}`;
   }
   return candidate;
+}
+
+function makeDialogDraggable(dialog: HTMLElement, handle: HTMLElement) {
+  let startX = 0, startY = 0, dx = 0, dy = 0;
+  handle.style.cursor = "grab";
+
+  function onMouseMove(e: MouseEvent) {
+    dx = e.clientX - startX;
+    dy = e.clientY - startY;
+    dialog.style.transform = `translate(${dx}px, ${dy}px)`;
+  }
+
+  function onMouseUp() {
+    handle.style.cursor = "grab";
+    document.removeEventListener("mousemove", onMouseMove);
+    document.removeEventListener("mouseup", onMouseUp);
+  }
+
+  handle.addEventListener("mousedown", (e) => {
+    e.preventDefault();
+    startX = e.clientX - dx;
+    startY = e.clientY - dy;
+    handle.style.cursor = "grabbing";
+    document.addEventListener("mousemove", onMouseMove);
+    document.addEventListener("mouseup", onMouseUp);
+  });
 }
 
 function showConflictDialog(name: string): Promise<"replace" | "keep-both" | "cancel"> {
@@ -672,7 +1157,7 @@ function showConflictDialog(name: string): Promise<"replace" | "keep-both" | "ca
 
     const keepBothBtn = document.createElement("button");
     keepBothBtn.className = "dialog-btn";
-    keepBothBtn.textContent = "Keep Both";
+    keepBothBtn.textContent = "Add Copy";
 
     const replaceBtn = document.createElement("button");
     replaceBtn.className = "dialog-btn dialog-btn-danger";
@@ -687,6 +1172,7 @@ function showConflictDialog(name: string): Promise<"replace" | "keep-both" | "ca
     dialog.appendChild(actions);
     overlay.appendChild(dialog);
     document.body.appendChild(overlay);
+    makeDialogDraggable(dialog, titleEl);
 
     cancelBtn.focus();
 
@@ -745,6 +1231,7 @@ function showConfirmDialog(title: string, message: string, actionLabel = "Move t
     dialog.appendChild(actions);
     overlay.appendChild(dialog);
     document.body.appendChild(overlay);
+    makeDialogDraggable(dialog, titleEl);
 
     cancelBtn.focus();
 

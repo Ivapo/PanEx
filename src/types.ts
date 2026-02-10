@@ -14,6 +14,7 @@ export interface PaneState {
   lastClickedPath: string | null;
   expandedPaths: Set<string>;
   childrenCache: Map<string, FileEntry[]>;
+  focusIndex: number;
 }
 
 export type SplitDirection = "horizontal" | "vertical";

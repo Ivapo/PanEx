@@ -5,6 +5,11 @@ export function countLeaves(node: LayoutNode): number {
   return countLeaves(node.first) + countLeaves(node.second);
 }
 
+export function collectLeafIds(node: LayoutNode): string[] {
+  if (node.type === "leaf") return [node.paneId];
+  return [...collectLeafIds(node.first), ...collectLeafIds(node.second)];
+}
+
 export function splitPane(
   root: LayoutNode,
   targetPaneId: string,
