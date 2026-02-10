@@ -6,6 +6,7 @@ A lightweight, multi-pane file explorer built with Tauri v2, Rust, and TypeScrip
 
 - Two side-by-side directory panes
 - Navigate folders with double-click, go up with the back button
+- Inline folder expansion — single-click a folder to expand it tree-view style
 - Native performance — Rust handles all filesystem operations
 - Dark theme out of the box
 

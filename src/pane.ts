@@ -8,6 +8,8 @@ export function createPane(id: string, initialPath: string): PaneState {
     currentPath: initialPath,
     entries: [],
     selectedIndex: -1,
+    expandedPaths: new Set(),
+    childrenCache: new Map(),
   };
 }
 
@@ -39,6 +41,7 @@ export interface PaneCallbacks {
   onRename: (entry: FileEntry, newName: string) => void;
   onDelete: (entry: FileEntry) => void;
   onDrop: (entry: FileEntry, sourcePaneId: string, copy: boolean) => void;
+  onToggleExpand: (entry: FileEntry) => void;
   onSplitRight?: () => void;
   onSplitBottom?: () => void;
   onClose?: () => void;
@@ -144,10 +147,21 @@ export function renderPane(
     callbacks.onDrop(data.entry, data.sourcePaneId, e.altKey);
   });
 
-  for (const entry of pane.entries) {
+  const displayList = buildDisplayList(
+    pane.entries,
+    pane.expandedPaths,
+    pane.childrenCache,
+    0
+  );
+
+  // Timer for distinguishing single-click from double-click on folders
+  let clickTimer: ReturnType<typeof setTimeout> | null = null;
+
+  for (const { entry, depth } of displayList) {
     const row = document.createElement("div");
     row.className = `pane-row${entry.is_dir ? " is-dir" : ""}`;
     row.draggable = true;
+    row.style.setProperty("--depth", String(depth));
 
     // Drag handlers on row
     row.addEventListener("dragstart", (e) => {
@@ -173,6 +187,14 @@ export function renderPane(
       row.classList.remove("dragging");
     });
 
+    // Toggle arrow for directories
+    const toggle = document.createElement("span");
+    toggle.className = "folder-toggle";
+    if (entry.is_dir) {
+      toggle.textContent = pane.expandedPaths.has(entry.path) ? "\u25BC" : "\u25B6";
+    }
+    row.appendChild(toggle);
+
     const icon = document.createElement("span");
     icon.className = "entry-icon";
     icon.textContent = entry.is_dir ? "\uD83D\uDCC1" : "\uD83D\uDCC4";
@@ -189,8 +211,25 @@ export function renderPane(
     row.appendChild(name);
     row.appendChild(size);
 
+    // Single-click on folder row → toggle expand (with delay to avoid firing on dblclick)
+    if (entry.is_dir) {
+      row.addEventListener("click", (e) => {
+        e.preventDefault();
+        if (clickTimer) clearTimeout(clickTimer);
+        clickTimer = setTimeout(() => {
+          clickTimer = null;
+          callbacks.onToggleExpand(entry);
+        }, 200);
+      });
+    }
+
     row.addEventListener("dblclick", (e) => {
       e.preventDefault();
+      // Cancel pending single-click expand
+      if (clickTimer) {
+        clearTimeout(clickTimer);
+        clickTimer = null;
+      }
       window.getSelection()?.removeAllRanges();
       if (entry.is_dir) {
         callbacks.onNavigate(entry);
@@ -230,6 +269,25 @@ export function renderPane(
   container.appendChild(list);
 
   return container;
+}
+
+function buildDisplayList(
+  entries: FileEntry[],
+  expandedPaths: Set<string>,
+  childrenCache: Map<string, FileEntry[]>,
+  depth: number
+): Array<{ entry: FileEntry; depth: number }> {
+  const result: Array<{ entry: FileEntry; depth: number }> = [];
+  for (const entry of entries) {
+    result.push({ entry, depth });
+    if (entry.is_dir && expandedPaths.has(entry.path)) {
+      const children = childrenCache.get(entry.path) ?? [];
+      result.push(
+        ...buildDisplayList(children, expandedPaths, childrenCache, depth + 1)
+      );
+    }
+  }
+  return result;
 }
 
 function startInlineRename(

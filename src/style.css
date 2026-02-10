@@ -313,8 +313,20 @@ body {
   align-items: center;
   gap: var(--spacing-md);
   padding: var(--spacing-sm) var(--spacing-lg);
+  padding-left: calc(var(--spacing-lg) + (var(--depth, 0) * 20px));
   cursor: default;
   user-select: none;
+}
+
+/* Toggle arrow before folder icon */
+.folder-toggle {
+  width: 10px;
+  flex-shrink: 0;
+  font-size: 10px;
+  color: var(--text-secondary);
+  text-align: center;
+  line-height: 1;
+  margin-right: -4px;
 }
 
 .pane-row:hover {
@@ -679,6 +691,7 @@ body {
 /* Dense row spacing */
 [data-theme="3.1"] .pane-row {
   padding: 1px 8px;
+  padding-left: calc(8px + (var(--depth, 0) * 16px));
   gap: 4px;
   line-height: 1.5;
   border-bottom: none;
@@ -692,7 +705,8 @@ body {
 
 [data-theme="3.1"] .pane-row:hover .entry-name,
 [data-theme="3.1"] .pane-row:hover .entry-size,
-[data-theme="3.1"] .pane-row:hover .entry-icon {
+[data-theme="3.1"] .pane-row:hover .entry-icon,
+[data-theme="3.1"] .pane-row:hover .folder-toggle {
   color: var(--tui-hover-text);
 }
 
@@ -992,6 +1006,7 @@ body {
 /* Rows: clean, tight, with subtle left-border highlight on hover */
 [data-theme="tui"] .pane-row {
   padding: 1px 8px;
+  padding-left: calc(8px + (var(--depth, 0) * 16px));
   gap: 6px;
   line-height: 1.6;
   border-left: 2px solid transparent;
@@ -1029,6 +1044,10 @@ body {
 }
 
 [data-theme="tui"] .pane-row:hover .entry-icon::after {
+  color: var(--accent);
+}
+
+[data-theme="tui"] .pane-row:hover .folder-toggle {
   color: var(--accent);
 }
 

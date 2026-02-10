@@ -176,6 +176,7 @@ function renderNode(node: LayoutNode, totalPanes: number): HTMLElement {
       onDelete: (entry: FileEntry) => handleDelete(paneId, entry),
       onDrop: (entry: FileEntry, sourcePaneId: string, copy: boolean) =>
         handleDrop(paneId, entry, sourcePaneId, copy),
+      onToggleExpand: (entry: FileEntry) => handleToggleExpand(paneId, entry),
       onSplitRight: () => handleSplitPane(paneId, "vertical"),
       onSplitBottom: () => handleSplitPane(paneId, "horizontal"),
       onClose: showClose ? () => handleClosePane(paneId) : undefined,
@@ -359,24 +360,61 @@ function showLicensePrompt(): Promise<boolean> {
   });
 }
 
+async function handleToggleExpand(paneId: string, entry: FileEntry) {
+  const pane = paneMap.get(paneId);
+  if (!pane || !entry.is_dir) return;
+
+  const expandedPaths = new Set(pane.expandedPaths);
+  const childrenCache = new Map(pane.childrenCache);
+
+  if (expandedPaths.has(entry.path)) {
+    // Collapse: remove this path and any nested expanded paths
+    expandedPaths.delete(entry.path);
+    childrenCache.delete(entry.path);
+    // Also collapse any children that were expanded under this path
+    for (const p of expandedPaths) {
+      if (p.startsWith(entry.path + "/")) {
+        expandedPaths.delete(p);
+        childrenCache.delete(p);
+      }
+    }
+  } else {
+    // Expand: load children
+    const children = await fs.readDir(entry.path);
+    expandedPaths.add(entry.path);
+    childrenCache.set(entry.path, children);
+  }
+
+  paneMap.set(paneId, { ...pane, expandedPaths, childrenCache });
+  renderLayout();
+}
+
 async function handleNavigate(paneId: string, entry: FileEntry) {
   const pane = paneMap.get(paneId);
   if (!pane) return;
-  paneMap.set(paneId, await navigateInto(pane, entry));
+  const navigated = await navigateInto(pane, entry);
+  // Reset expansion state when navigating into a new directory
+  paneMap.set(paneId, {
+    ...navigated,
+    expandedPaths: new Set(),
+    childrenCache: new Map(),
+  });
   renderLayout();
 }
 
 async function handleNavigateUp(paneId: string) {
   const pane = paneMap.get(paneId);
   if (!pane) return;
-  paneMap.set(paneId, await navigateUp(pane));
+  const updated = await navigateUp(pane);
+  paneMap.set(paneId, { ...updated, expandedPaths: new Set(), childrenCache: new Map() });
   renderLayout();
 }
 
 async function handleHome(paneId: string) {
   const pane = paneMap.get(paneId);
   if (!pane) return;
-  paneMap.set(paneId, await loadDirectory({ ...pane, currentPath: homePath }));
+  const updated = await loadDirectory({ ...pane, currentPath: homePath });
+  paneMap.set(paneId, { ...updated, expandedPaths: new Set(), childrenCache: new Map() });
   renderLayout();
 }
 

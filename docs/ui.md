@@ -84,6 +84,17 @@ Triggered from context menu. Replaces the filename span with a text input. For f
 ### Delete Confirmation Dialog
 Modal overlay with "Move to Trash" and "Cancel" buttons. Cancel is focused by default (safety). Dismisses on Escape or clicking outside the dialog. Uses a red accent (`var(--danger)`) for the danger button.
 
+### Inline Folder Expansion (Tree View)
+Single-click a folder to expand it inline, showing its children indented below the folder row with a toggle arrow (▶ collapsed, ▼ expanded). This works recursively — expanding nested folders stacks the indentation. Single-click again to collapse.
+
+Double-click still navigates into the folder as the pane root (unchanged behavior). A 200ms delay on single-click prevents the expand from firing on double-clicks.
+
+Collapsing a parent folder also collapses all expanded children underneath it. Navigating into a folder (double-click), going up, or going home resets the expansion state.
+
+**Data model**: Expanded folders are tracked per-pane via `expandedPaths: Set<string>` and `childrenCache: Map<string, FileEntry[]>` on `PaneState`. Children are loaded on demand via `fs.readDir()` when a folder is first expanded and cached until collapsed or the pane navigates away.
+
+**CSS**: Indentation uses a `--depth` CSS variable on each row, applied as `padding-left: calc(base + depth * 20px)`. The 3.1 and TUI themes override with 16px steps to match their tighter row spacing.
+
 ### File Opening
 Double-click or context menu Open. Directories navigate into them; files open in the OS default application.
 
