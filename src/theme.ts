@@ -19,7 +19,7 @@ export function setTheme(theme: ThemeName): void {
 export function cycleTheme(): void {
   const current = getTheme();
   const idx = THEME_ORDER.indexOf(current);
-  const next = THEME_ORDER[(idx + 1) % THEME_ORDER.length];
+  const next = THEME_ORDER[(idx + 1) % THEME_ORDER.length] ?? "dark";
   setTheme(next);
 }
 

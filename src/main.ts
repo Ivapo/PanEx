@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { fs, isBrowser } from "./fs.ts";
 import type { FileEntry, PaneState, LayoutNode, LayoutSplit, SplitDirection } from "./types.ts";
 import { createPane, loadDirectory, navigateInto, navigateUp, renderPane } from "./pane.ts";
 import { countLeaves, splitPane, removePane } from "./layout.ts";
@@ -23,7 +23,7 @@ const THEME_LABELS: Record<string, string> = {
 
 async function init() {
   initTheme();
-  homePath = await invoke<string>("get_home_dir");
+  homePath = await fs.getHomeDir();
 
   const leftId = nextPaneId();
   const rightId = nextPaneId();
@@ -49,6 +49,15 @@ function renderLayout() {
   const app = document.getElementById("app");
   if (!app) return;
   app.innerHTML = "";
+
+  // Web banner (browser mode only)
+  if (isBrowser()) {
+    const banner = document.createElement("div");
+    banner.className = "web-banner";
+    banner.innerHTML =
+      'You\'re using the web version — <a href="https://paneexplorer.app" target="_blank">Download the native app</a> for the full experience';
+    app.appendChild(banner);
+  }
 
   // Global toolbar
   const toolbar = document.createElement("div");
@@ -296,7 +305,7 @@ async function handleHome(paneId: string) {
 
 async function handleOpen(entry: FileEntry) {
   try {
-    await invoke("open_entry", { path: entry.path });
+    await fs.openEntry(entry.path);
   } catch (e) {
     alert(`Failed to open: ${e}`);
   }
@@ -304,7 +313,7 @@ async function handleOpen(entry: FileEntry) {
 
 async function handleRename(paneId: string, entry: FileEntry, newName: string) {
   try {
-    await invoke("rename_entry", { path: entry.path, newName });
+    await fs.renameEntry(entry.path, newName);
     const pane = paneMap.get(paneId);
     if (pane) {
       await refreshPanesShowingPaths(pane.currentPath);
@@ -315,14 +324,22 @@ async function handleRename(paneId: string, entry: FileEntry, newName: string) {
 }
 
 async function handleDelete(paneId: string, entry: FileEntry) {
+  const deleteMessage = isBrowser()
+    ? "This item will be permanently deleted."
+    : "This item will be moved to the Trash.";
+  const deleteAction = isBrowser() ? "Delete" : "Move to Trash";
+
   const confirmed = await showConfirmDialog(
-    `Move "${entry.name}" to Trash?`,
-    "This item will be moved to the Trash."
+    isBrowser()
+      ? `Permanently delete "${entry.name}"?`
+      : `Move "${entry.name}" to Trash?`,
+    deleteMessage,
+    deleteAction
   );
   if (!confirmed) return;
 
   try {
-    await invoke("delete_entry", { path: entry.path });
+    await fs.deleteEntry(entry.path);
     const pane = paneMap.get(paneId);
     if (pane) {
       await refreshPanesShowingPaths(pane.currentPath);
@@ -352,12 +369,12 @@ async function handleDrop(
       const newName = generateUniqueName(entry.name, targetPane.entries);
       try {
         if (isCopy) {
-          await invoke("copy_entry", { source: entry.path, destDir });
+          await fs.copyEntry(entry.path, destDir);
         } else {
-          await invoke("move_entry", { source: entry.path, destDir });
+          await fs.moveEntry(entry.path, destDir);
         }
         const destPath = destDir + "/" + entry.name;
-        await invoke("rename_entry", { path: destPath, newName });
+        await fs.renameEntry(destPath, newName);
       } catch (e) {
         alert(`Operation failed: ${e}`);
       }
@@ -371,7 +388,7 @@ async function handleDrop(
     // choice === "replace": delete existing then proceed
     const existingPath = destDir + "/" + entry.name;
     try {
-      await invoke("delete_entry", { path: existingPath });
+      await fs.deleteEntry(existingPath);
     } catch (e) {
       alert(`Failed to replace: ${e}`);
       return;
@@ -380,9 +397,9 @@ async function handleDrop(
 
   try {
     if (isCopy) {
-      await invoke("copy_entry", { source: entry.path, destDir });
+      await fs.copyEntry(entry.path, destDir);
     } else {
-      await invoke("move_entry", { source: entry.path, destDir });
+      await fs.moveEntry(entry.path, destDir);
     }
   } catch (e) {
     alert(`Operation failed: ${e}`);
@@ -486,7 +503,7 @@ function showConflictDialog(name: string): Promise<"replace" | "keep-both" | "ca
   });
 }
 
-function showConfirmDialog(title: string, message: string): Promise<boolean> {
+function showConfirmDialog(title: string, message: string, actionLabel = "Move to Trash"): Promise<boolean> {
   return new Promise((resolve) => {
     const overlay = document.createElement("div");
     overlay.className = "dialog-overlay";
@@ -511,7 +528,7 @@ function showConfirmDialog(title: string, message: string): Promise<boolean> {
 
     const confirmBtn = document.createElement("button");
     confirmBtn.className = "dialog-btn dialog-btn-danger";
-    confirmBtn.textContent = "Move to Trash";
+    confirmBtn.textContent = actionLabel;
 
     actions.appendChild(cancelBtn);
     actions.appendChild(confirmBtn);

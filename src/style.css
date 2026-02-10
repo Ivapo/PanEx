@@ -82,6 +82,22 @@ body {
   background: var(--bg-primary);
 }
 
+/* Web Banner */
+.web-banner {
+  background: var(--accent);
+  color: #1e1e2e;
+  text-align: center;
+  padding: 4px var(--spacing-md);
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.web-banner a {
+  color: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+}
+
 /* Global Toolbar */
 .global-toolbar {
   display: flex;

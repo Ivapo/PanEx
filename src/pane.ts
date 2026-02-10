@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { fs } from "./fs.ts";
 import type { FileEntry, PaneState } from "./types.ts";
 import { showContextMenu } from "./context-menu.ts";
 
@@ -12,16 +12,12 @@ export function createPane(id: string, initialPath: string): PaneState {
 }
 
 export async function loadDirectory(pane: PaneState): Promise<PaneState> {
-  const entries = await invoke<FileEntry[]>("read_dir", {
-    path: pane.currentPath,
-  });
+  const entries = await fs.readDir(pane.currentPath);
   return { ...pane, entries, selectedIndex: -1 };
 }
 
 export async function navigateUp(pane: PaneState): Promise<PaneState> {
-  const parentPath = await invoke<string>("get_parent_dir", {
-    path: pane.currentPath,
-  });
+  const parentPath = await fs.getParentDir(pane.currentPath);
   const updated = { ...pane, currentPath: parentPath };
   return loadDirectory(updated);
 }
