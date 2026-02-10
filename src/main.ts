@@ -262,10 +262,10 @@ function setupKeyboardShortcuts() {
       if (leafIds.length === 0) return;
       const currentIdx = activePaneId ? leafIds.indexOf(activePaneId) : -1;
       const nextIdx = (currentIdx + 1) % leafIds.length;
-      // Clear selection in old pane
+      // Clear selection and focus in old pane
       if (activePaneId) {
         const old = paneMap.get(activePaneId);
-        if (old) paneMap.set(activePaneId, { ...old, selectedPaths: new Set(), lastClickedPath: null });
+        if (old) paneMap.set(activePaneId, { ...old, selectedPaths: new Set(), lastClickedPath: null, focusIndex: -1 });
       }
       activePaneId = leafIds[nextIdx]!;
       // Select focused item in new pane
@@ -658,11 +658,12 @@ function renderNode(node: LayoutNode, totalPanes: number): HTMLElement {
       if (activePaneId !== paneId) {
         activePaneId = paneId;
         for (const [id, p] of paneMap) {
-          if (id !== paneId && p.selectedPaths.size > 0) {
-            paneMap.set(id, { ...p, selectedPaths: new Set(), lastClickedPath: null });
+          if (id !== paneId) {
+            paneMap.set(id, { ...p, selectedPaths: new Set(), lastClickedPath: null, focusIndex: -1 });
           }
         }
         updateSelectionDOM();
+        updateFocusCursorDOM();
         updateActivePaneDOM();
       }
     });
@@ -858,10 +859,10 @@ function handleSelect(
   entry: FileEntry,
   modifiers: { shift: boolean; metaOrCtrl: boolean }
 ) {
-  // Clear selection in all other panes
+  // Clear selection and focus in all other panes
   for (const [id, p] of paneMap) {
-    if (id !== paneId && p.selectedPaths.size > 0) {
-      paneMap.set(id, { ...p, selectedPaths: new Set(), lastClickedPath: null });
+    if (id !== paneId) {
+      paneMap.set(id, { ...p, selectedPaths: new Set(), lastClickedPath: null, focusIndex: -1 });
     }
   }
   activePaneId = paneId;
