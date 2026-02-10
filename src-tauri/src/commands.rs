@@ -44,3 +44,8 @@ pub fn copy_entry(source: String, dest_dir: String) -> Result<String, String> {
 pub fn move_entry(source: String, dest_dir: String) -> Result<String, String> {
     fs_ops::move_entry(&source, &dest_dir)
 }
+
+#[tauri::command]
+pub fn calculate_dir_size(path: String) -> Result<u64, String> {
+    fs_ops::calculate_directory_size(&path)
+}

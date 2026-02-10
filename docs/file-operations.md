@@ -14,6 +14,7 @@ All filesystem and OS operations go through Rust via Tauri commands. The fronten
 | `delete_entry` | `fs_ops::delete_entry` | Moves a file or folder to the OS trash (via `trash` crate). Does not permanently delete. |
 | `copy_entry` | `fs_ops::copy_entry` | Copies a file or directory (recursively) to a destination directory. Returns the destination path. |
 | `move_entry` | `fs_ops::move_entry` | Moves a file or directory to a destination directory. Tries `fs::rename` first (fast, same volume), falls back to copy + delete for cross-volume moves. Returns the destination path. |
+| `calculate_dir_size` | `fs_ops::calculate_directory_size` | Recursively calculates the total disk usage of a directory. Uses actual disk blocks (`stat.blocks * 512`) on Unix for accurate sizes (handles sparse files correctly). Silently skips entries on permission errors. |
 
 ## Copy / Cut / Paste (In-App Clipboard)
 
@@ -26,6 +27,16 @@ File copy/cut/paste uses an in-app clipboard (`fileClipboard` in `main.ts`), not
 **Cross-directory paste**: Uses the same `handleDrop` logic as drag-and-drop (copy or move based on clipboard mode).
 
 **Same-directory paste**: Detected when the source entries' parent matches the destination directory. Shows a conflict dialog with "Add Copy" / "Replace" / "Cancel". The "Add Copy" option stages through the parent directory to create a real duplicate (since `copyEntry` to the same directory is a no-op), then moves the staged copy back with a unique name.
+
+## Directory Sizes
+
+Directories display their total disk usage in the Size column, computed asynchronously after each directory load. Sizes show "--" as a placeholder until the computation finishes, then update in-place without a full re-render.
+
+- **Async & throttled**: Computations are queued and limited to 2 concurrent calls to avoid blocking the Rust thread pool. Sizes trickle in gradually rather than stalling the UI.
+- **Cached**: Results are stored in an in-memory `dirSizeCache` (keyed by path) for the session. Navigating back to a previously visited directory shows sizes immediately.
+- **Disk usage, not logical size**: On Unix, uses `stat.blocks * 512` (actual disk blocks) instead of `metadata.len()`. This gives accurate sizes for sparse files (e.g., Docker.raw reports real usage, not the pre-allocated virtual size). Individual file sizes also use disk usage for consistency.
+- **Sort integration**: When sorting by Size, directories use their cached computed size (or 0 if not yet computed).
+- **Browser mode**: Uses the File System Access API to recursively walk directories and sum `file.size`.
 
 ## Design Decisions
 

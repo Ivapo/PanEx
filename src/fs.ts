@@ -9,6 +9,7 @@ export interface FsBackend {
   deleteEntry(path: string): Promise<void>;
   copyEntry(source: string, destDir: string): Promise<string>;
   moveEntry(source: string, destDir: string): Promise<string>;
+  getDirSize(path: string): Promise<number>;
 }
 
 function createTauriFs(): FsBackend {
@@ -55,6 +56,10 @@ function createTauriFs(): FsBackend {
     async moveEntry(source: string, destDir: string): Promise<string> {
       const invoke = await getInvoke();
       return invoke<string>("move_entry", { source, destDir });
+    },
+    async getDirSize(path: string): Promise<number> {
+      const invoke = await getInvoke();
+      return invoke<number>("calculate_dir_size", { path });
     },
   };
 }
@@ -280,6 +285,25 @@ function createBrowserFs(): FsBackend {
       await this.copyEntry(source, destDir);
       await this.deleteEntry(source);
       return destPath;
+    },
+
+    async getDirSize(path: string): Promise<number> {
+      async function walkHandle(handle: FileSystemDirectoryHandle): Promise<number> {
+        let total = 0;
+        for await (const [, child] of handle.entries()) {
+          if (child.kind === "file") {
+            try {
+              const file = await (child as FileSystemFileHandle).getFile();
+              total += file.size;
+            } catch { /* skip */ }
+          } else {
+            total += await walkHandle(child as FileSystemDirectoryHandle);
+          }
+        }
+        return total;
+      }
+      const dirHandle = await resolveDir(path);
+      return walkHandle(dirHandle);
     },
   };
 }

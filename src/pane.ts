@@ -55,6 +55,7 @@ export interface PaneCallbacks {
   onSortChange: (field: SortField) => void;
   sortField: SortField;
   sortDirection: SortDirection;
+  getDirSize?: (path: string) => number | null;
 }
 
 export function renderPane(
@@ -249,7 +250,12 @@ export function renderPane(
 
     const size = document.createElement("span");
     size.className = "entry-size";
-    size.textContent = entry.is_dir ? "" : formatSize(entry.size);
+    if (entry.is_dir) {
+      const cached = callbacks.getDirSize?.(entry.path) ?? null;
+      size.textContent = cached !== null ? formatSize(cached) : "--";
+    } else {
+      size.textContent = formatSize(entry.size);
+    }
 
     const date = document.createElement("span");
     date.className = "entry-date";

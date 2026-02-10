@@ -15,6 +15,7 @@ let showHidden = false;
 let fileClipboard: { entries: FileEntry[]; mode: "copy" | "cut" } | null = null;
 let sortField: SortField = (localStorage.getItem("paneexplorer_sort_field") as SortField) || "name";
 let sortDirection: SortDirection = (localStorage.getItem("paneexplorer_sort_dir") as SortDirection) || "asc";
+const dirSizeCache = new Map<string, number>();
 
 function nextPaneId(): string {
   return "pane-" + paneCounter++;
@@ -41,9 +42,12 @@ function sortEntries(entries: FileEntry[], field: SortField, direction: SortDire
       case "name":
         cmp = a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
         break;
-      case "size":
-        cmp = a.size - b.size;
+      case "size": {
+        const sizeA = a.is_dir ? (dirSizeCache.get(a.path) ?? 0) : a.size;
+        const sizeB = b.is_dir ? (dirSizeCache.get(b.path) ?? 0) : b.size;
+        cmp = sizeA - sizeB;
         break;
+      }
       case "modified":
         cmp = a.modified - b.modified;
         break;
@@ -418,6 +422,53 @@ async function refilterAllPanes() {
   }
   await Promise.all(reloads);
   renderLayout();
+  for (const [id, p] of paneMap) computeAllDirSizes(id, p);
+}
+
+const dirSizeQueue: Array<{ paneId: string; entry: FileEntry }> = [];
+let dirSizeActive = 0;
+const DIR_SIZE_CONCURRENCY = 2;
+
+function computeAllDirSizes(paneId: string, pane: PaneState) {
+  const displayList = buildDisplayList(pane.entries, pane.expandedPaths, pane.childrenCache, 0);
+  for (const { entry } of displayList) {
+    if (entry.is_dir && !dirSizeCache.has(entry.path)) {
+      dirSizeQueue.push({ paneId, entry });
+    }
+  }
+  drainDirSizeQueue();
+}
+
+function drainDirSizeQueue() {
+  while (dirSizeActive < DIR_SIZE_CONCURRENCY && dirSizeQueue.length > 0) {
+    const item = dirSizeQueue.shift()!;
+    if (dirSizeCache.has(item.entry.path)) continue;
+    dirSizeActive++;
+    fs.getDirSize(item.entry.path).then((size) => {
+      dirSizeCache.set(item.entry.path, size);
+      updateDirSizeDOM(item.entry.path, size);
+    }).catch(() => { /* silently skip */ }).finally(() => {
+      dirSizeActive--;
+      drainDirSizeQueue();
+    });
+  }
+}
+
+function updateDirSizeDOM(path: string, size: number) {
+  // Update all matching rows across all panes (same dir may appear in multiple panes)
+  const rows = document.querySelectorAll<HTMLElement>(`.pane-row[data-path="${CSS.escape(path)}"]`);
+  for (const row of rows) {
+    const sizeEl = row.querySelector<HTMLElement>(".entry-size");
+    if (sizeEl) sizeEl.textContent = formatSize(size);
+  }
+}
+
+function formatSize(bytes: number): string {
+  if (bytes === 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB"];
+  const i = Math.floor(Math.log(bytes) / Math.log(1024));
+  const s = bytes / Math.pow(1024, i);
+  return `${s.toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
 }
 
 async function init() {
@@ -512,6 +563,7 @@ async function initPanes() {
 
   setupKeyboardShortcuts();
   renderLayout();
+  for (const [id, p] of paneMap) computeAllDirSizes(id, p);
 }
 
 function renderLayout() {
@@ -599,11 +651,18 @@ function renderNode(node: LayoutNode, totalPanes: number): HTMLElement {
       onSortChange: handleSortChange,
       sortField,
       sortDirection,
+      getDirSize: (path: string) => dirSizeCache.get(path) ?? null,
     });
 
     paneEl.addEventListener("mousedown", () => {
       if (activePaneId !== paneId) {
         activePaneId = paneId;
+        for (const [id, p] of paneMap) {
+          if (id !== paneId && p.selectedPaths.size > 0) {
+            paneMap.set(id, { ...p, selectedPaths: new Set(), lastClickedPath: null });
+          }
+        }
+        updateSelectionDOM();
         updateActivePaneDOM();
       }
     });
@@ -687,6 +746,7 @@ async function handleSplitPane(paneId: string, direction: SplitDirection) {
 
   layoutRoot = splitPane(layoutRoot, paneId, newId, direction);
   renderLayout();
+  computeAllDirSizes(newId, newPane);
 }
 
 function handleClosePane(paneId: string) {
@@ -798,15 +858,10 @@ function handleSelect(
   entry: FileEntry,
   modifiers: { shift: boolean; metaOrCtrl: boolean }
 ) {
-  // If clicking in a different pane, clear previous pane's selection
-  if (activePaneId && activePaneId !== paneId) {
-    const prevPane = paneMap.get(activePaneId);
-    if (prevPane) {
-      paneMap.set(activePaneId, {
-        ...prevPane,
-        selectedPaths: new Set(),
-        lastClickedPath: null,
-      });
+  // Clear selection in all other panes
+  for (const [id, p] of paneMap) {
+    if (id !== paneId && p.selectedPaths.size > 0) {
+      paneMap.set(id, { ...p, selectedPaths: new Set(), lastClickedPath: null });
     }
   }
   activePaneId = paneId;
@@ -900,8 +955,10 @@ async function handleToggleExpand(paneId: string, entry: FileEntry) {
     childrenCache.set(entry.path, children);
   }
 
-  paneMap.set(paneId, { ...pane, expandedPaths, childrenCache });
+  const expandResult = { ...pane, expandedPaths, childrenCache };
+  paneMap.set(paneId, expandResult);
   renderLayout();
+  computeAllDirSizes(paneId, expandResult);
 }
 
 async function handleNavigate(paneId: string, entry: FileEntry) {
@@ -909,30 +966,36 @@ async function handleNavigate(paneId: string, entry: FileEntry) {
   if (!pane) return;
   const navigated = await navigateInto(pane, entry);
   // Reset expansion state when navigating into a new directory
-  paneMap.set(paneId, applySortAndFilter({
+  const navResult = applySortAndFilter({
     ...navigated,
     selectedPaths: new Set(),
     lastClickedPath: null,
     expandedPaths: new Set(),
     childrenCache: new Map(),
-  }));
+  });
+  paneMap.set(paneId, navResult);
   renderLayout();
+  computeAllDirSizes(paneId, navResult);
 }
 
 async function handleNavigateUp(paneId: string) {
   const pane = paneMap.get(paneId);
   if (!pane) return;
   const updated = await navigateUp(pane);
-  paneMap.set(paneId, applySortAndFilter({ ...updated, selectedPaths: new Set(), lastClickedPath: null, expandedPaths: new Set(), childrenCache: new Map() }));
+  const upResult = applySortAndFilter({ ...updated, selectedPaths: new Set(), lastClickedPath: null, expandedPaths: new Set(), childrenCache: new Map() });
+  paneMap.set(paneId, upResult);
   renderLayout();
+  computeAllDirSizes(paneId, upResult);
 }
 
 async function handleHome(paneId: string) {
   const pane = paneMap.get(paneId);
   if (!pane) return;
   const updated = await loadDirectory({ ...pane, currentPath: homePath });
-  paneMap.set(paneId, applySortAndFilter({ ...updated, selectedPaths: new Set(), lastClickedPath: null, expandedPaths: new Set(), childrenCache: new Map() }));
+  const homeResult = applySortAndFilter({ ...updated, selectedPaths: new Set(), lastClickedPath: null, expandedPaths: new Set(), childrenCache: new Map() });
+  paneMap.set(paneId, homeResult);
   renderLayout();
+  computeAllDirSizes(paneId, homeResult);
 }
 
 async function handleOpen(entry: FileEntry) {
@@ -1148,6 +1211,9 @@ async function refreshPanesShowingPaths(...paths: string[]) {
   }
   await Promise.all(reloads);
   renderLayout();
+  for (const [id, p] of paneMap) {
+    if (pathSet.has(p.currentPath)) computeAllDirSizes(id, p);
+  }
 }
 
 function generateUniqueName(name: string, entries: FileEntry[]): string {

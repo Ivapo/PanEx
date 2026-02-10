@@ -23,6 +23,7 @@ pub fn run() {
             commands::delete_entry,
             commands::copy_entry,
             commands::move_entry,
+            commands::calculate_dir_size,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

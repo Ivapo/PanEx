@@ -66,7 +66,7 @@ pane-explorer/
 - File preview (images, text, markdown)
 - ~~Sort by name/size/date~~ *(done — clickable column headers: Name, Extension, Size, Date Modified; persisted in localStorage)*
 - Show/hide hidden files toggle
-- File size display for directories
+- ~~File size display for directories~~ *(done — async directory size computation with in-memory cache, disk usage via stat blocks, throttled to 2 concurrent)*
 
 ## Premium Boundary
 

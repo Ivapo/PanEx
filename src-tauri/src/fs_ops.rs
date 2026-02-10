@@ -39,7 +39,7 @@ pub fn read_directory(path: &str) -> Result<Vec<FileEntry>, String> {
             name: entry.file_name().to_string_lossy().to_string(),
             path: entry.path().to_string_lossy().to_string(),
             is_dir: metadata.is_dir(),
-            size: metadata.len(),
+            size: disk_size(&metadata),
             modified,
         });
     }
@@ -154,6 +154,45 @@ fn copy_dir_recursive(src: &Path, dest: &Path) -> Result<(), String> {
     }
 
     Ok(())
+}
+
+pub fn calculate_directory_size(path: &str) -> Result<u64, String> {
+    let dir_path = Path::new(path);
+    if !dir_path.is_dir() {
+        return Err(format!("Not a directory: {}", path));
+    }
+
+    fn walk(dir: &Path) -> u64 {
+        let mut total: u64 = 0;
+        if let Ok(entries) = fs::read_dir(dir) {
+            for entry in entries {
+                if let Ok(entry) = entry {
+                    if let Ok(meta) = entry.metadata() {
+                        if meta.is_dir() {
+                            total += walk(&entry.path());
+                        } else {
+                            total += disk_size(&meta);
+                        }
+                    }
+                }
+            }
+        }
+        total
+    }
+
+    Ok(walk(dir_path))
+}
+
+/// Returns actual disk usage (blocks * 512) on Unix, logical size on Windows.
+#[cfg(unix)]
+fn disk_size(meta: &fs::Metadata) -> u64 {
+    use std::os::unix::fs::MetadataExt;
+    meta.blocks() * 512
+}
+
+#[cfg(not(unix))]
+fn disk_size(meta: &fs::Metadata) -> u64 {
+    meta.len()
 }
 
 pub fn move_entry(source: &str, dest_dir: &str) -> Result<String, String> {

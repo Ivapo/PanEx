@@ -121,12 +121,12 @@ Directories always sort before files regardless of sort field. Expanded folder c
 |-------|----------|
 | Name | Case-insensitive alphabetical (`localeCompare` with `sensitivity: 'base'`) |
 | Extension | Groups by file extension (e.g. `.js`, `.pdf`), then alphabetical within each group. Directories and extensionless files sort first. |
-| Size | Numeric, smallest first (ascending) |
+| Size | Numeric, smallest first (ascending). Directories use their computed total disk usage (see `docs/file-operations.md` § Directory Sizes). |
 | Date Modified | By Unix timestamp, oldest first (ascending) |
 
 **Data model:** `sortField: SortField` and `sortDirection: SortDirection` are module-level globals in `main.ts`. The `applySortAndFilter()` function chains hidden-file filtering with sorting and is called on every directory load, navigation, and toggle. The `sortEntries()` function is a pure comparator that handles all four fields.
 
-**Row data:** Each row displays the file extension in an `.entry-ext` span and the modification date in an `.entry-date` span. Dates show the time (e.g. "3:42 PM") for files modified today, and a short date (e.g. "Jan 15, 2025") otherwise.
+**Row data:** Each row displays the file extension in an `.entry-ext` span, the size in an `.entry-size` span, and the modification date in an `.entry-date` span. Dates show the time (e.g. "3:42 PM") for files modified today, and a short date (e.g. "Jan 15, 2025") otherwise. Directory sizes show "--" initially and update asynchronously as computations complete. All sizes reflect actual disk usage (not logical size).
 
 ### Hidden Files Toggle
 
