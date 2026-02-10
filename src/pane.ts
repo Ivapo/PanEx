@@ -1,5 +1,5 @@
 import { fs } from "./fs.ts";
-import type { FileEntry, PaneState } from "./types.ts";
+import type { FileEntry, PaneState, SortField, SortDirection } from "./types.ts";
 import { showContextMenu } from "./context-menu.ts";
 
 export function createPane(id: string, initialPath: string): PaneState {
@@ -52,6 +52,9 @@ export interface PaneCallbacks {
   onSplitRight?: () => void;
   onSplitBottom?: () => void;
   onClose?: () => void;
+  onSortChange: (field: SortField) => void;
+  sortField: SortField;
+  sortDirection: SortDirection;
 }
 
 export function renderPane(
@@ -121,6 +124,31 @@ export function renderPane(
   }
 
   header.appendChild(actions);
+
+  // Column headers
+  const colHeader = document.createElement("div");
+  colHeader.className = "pane-column-header";
+
+  const COLUMNS: { field: SortField; label: string; className: string }[] = [
+    { field: "name", label: "Name", className: "col-name" },
+    { field: "type", label: "Extension", className: "col-type" },
+    { field: "size", label: "Size", className: "col-size" },
+    { field: "modified", label: "Date Modified", className: "col-date" },
+  ];
+
+  for (const col of COLUMNS) {
+    const item = document.createElement("button");
+    item.className = `column-header-item ${col.className}${callbacks.sortField === col.field ? " active" : ""}`;
+    item.textContent = col.label;
+    if (callbacks.sortField === col.field) {
+      const arrow = document.createElement("span");
+      arrow.className = "sort-indicator";
+      arrow.textContent = callbacks.sortDirection === "asc" ? " \u25B2" : " \u25BC";
+      item.appendChild(arrow);
+    }
+    item.addEventListener("click", () => callbacks.onSortChange(col.field));
+    colHeader.appendChild(item);
+  }
 
   const list = document.createElement("div");
   list.className = "pane-list";
@@ -223,9 +251,21 @@ export function renderPane(
     size.className = "entry-size";
     size.textContent = entry.is_dir ? "" : formatSize(entry.size);
 
+    const date = document.createElement("span");
+    date.className = "entry-date";
+    date.textContent = formatDate(entry.modified);
+
+    const ext = document.createElement("span");
+    ext.className = "entry-ext";
+    if (!entry.is_dir && entry.name.includes(".")) {
+      ext.textContent = "." + entry.name.split(".").pop()!;
+    }
+
     row.appendChild(icon);
     row.appendChild(name);
+    row.appendChild(ext);
     row.appendChild(size);
+    row.appendChild(date);
 
     // Prevent native text selection on shift+click
     row.addEventListener("mousedown", (e) => {
@@ -299,6 +339,7 @@ export function renderPane(
   }
 
   container.appendChild(header);
+  container.appendChild(colHeader);
   container.appendChild(list);
 
   return container;
@@ -389,4 +430,17 @@ function formatSize(bytes: number): string {
   const i = Math.floor(Math.log(bytes) / Math.log(1024));
   const size = bytes / Math.pow(1024, i);
   return `${size.toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
+}
+
+function formatDate(timestamp: number): string {
+  if (timestamp === 0) return "";
+  const date = new Date(timestamp * 1000);
+  const now = new Date();
+  const isToday = date.getFullYear() === now.getFullYear()
+    && date.getMonth() === now.getMonth()
+    && date.getDate() === now.getDate();
+  if (isToday) {
+    return date.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  }
+  return date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 }

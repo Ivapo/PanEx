@@ -34,3 +34,6 @@ export interface LayoutSplit {
 }
 
 export type LayoutNode = LayoutLeaf | LayoutSplit;
+
+export type SortField = 'name' | 'size' | 'modified' | 'type';
+export type SortDirection = 'asc' | 'desc';

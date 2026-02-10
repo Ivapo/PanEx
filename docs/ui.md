@@ -108,6 +108,26 @@ Full keyboard navigation is supported. Shortcuts are platform-aware — modifier
 
 **Data model**: `focusIndex: number` on `PaneState` tracks the keyboard cursor position within the flat display list. Set to `0` when loading a directory, `-1` when no focus. `activePaneId` tracks which pane receives keyboard input. A module-level `fileClipboard: { entries: FileEntry[], mode: 'copy' | 'cut' } | null` stores the in-app clipboard.
 
+### Sortable Columns
+
+Each pane has a clickable column header row between the path bar and the file list. Columns: **Name**, **Extension**, **Size**, **Date Modified**. Clicking a column sorts all panes by that field; clicking the active column toggles between ascending and descending. The active column is highlighted with the accent color and shows a ▲/▼ indicator.
+
+Sort state is global (all panes share the same sort) and persists across sessions via `localStorage` (keys: `paneexplorer_sort_field`, `paneexplorer_sort_dir`). Default: name ascending.
+
+Directories always sort before files regardless of sort field. Expanded folder children also respect the current sort order.
+
+**Sort fields:**
+| Field | Behavior |
+|-------|----------|
+| Name | Case-insensitive alphabetical (`localeCompare` with `sensitivity: 'base'`) |
+| Extension | Groups by file extension (e.g. `.js`, `.pdf`), then alphabetical within each group. Directories and extensionless files sort first. |
+| Size | Numeric, smallest first (ascending) |
+| Date Modified | By Unix timestamp, oldest first (ascending) |
+
+**Data model:** `sortField: SortField` and `sortDirection: SortDirection` are module-level globals in `main.ts`. The `applySortAndFilter()` function chains hidden-file filtering with sorting and is called on every directory load, navigation, and toggle. The `sortEntries()` function is a pure comparator that handles all four fields.
+
+**Row data:** Each row displays the file extension in an `.entry-ext` span and the modification date in an `.entry-date` span. Dates show the time (e.g. "3:42 PM") for files modified today, and a short date (e.g. "Jan 15, 2025") otherwise.
+
 ### Hidden Files Toggle
 
 `⌘.` / `Ctrl+.` toggles visibility of dotfiles (files/folders starting with `.`). The state is tracked by a module-level `showHidden` boolean. When toggled, all panes reload from disk and re-filter. Expanded folder children also respect the filter.

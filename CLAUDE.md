@@ -34,9 +34,13 @@ pane-explorer/
 ├── src/                 # Frontend
 │   ├── index.html
 │   ├── style.css
-│   ├── main.ts
-│   ├── pane.ts          # Pane component logic
-│   ├── types.ts         # Shared types (FileEntry, PaneState, etc.)
+│   ├── main.ts          # State management, keyboard shortcuts, sort logic
+│   ├── pane.ts          # Pane component logic, column headers, rendering
+│   ├── types.ts         # Shared types (FileEntry, PaneState, SortField, etc.)
+│   ├── fs.ts            # FsBackend interface, Tauri + Browser implementations
+│   ├── layout.ts        # Layout tree operations (split, remove, collect)
+│   ├── theme.ts         # Theme cycling and persistence
+│   ├── context-menu.ts  # Right-click context menu
 │   └── licensing.ts     # Premium license check
 ├── package.json
 ├── CLAUDE.md
@@ -60,7 +64,7 @@ pane-explorer/
 - Dark/light theme toggle
 - Keyboard shortcuts (arrows to navigate, enter to open, delete, cmd+c/v)
 - File preview (images, text, markdown)
-- Sort by name/size/date
+- ~~Sort by name/size/date~~ *(done — clickable column headers: Name, Extension, Size, Date Modified; persisted in localStorage)*
 - Show/hide hidden files toggle
 - File size display for directories
 

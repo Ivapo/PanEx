@@ -6,7 +6,7 @@ All filesystem and OS operations go through Rust via Tauri commands. The fronten
 
 | Command | Rust function | Description |
 |---------|--------------|-------------|
-| `read_dir` | `fs_ops::read_directory` | Lists directory contents (name, path, is_dir, size, modified). Results sorted: directories first, then alphabetical. |
+| `read_dir` | `fs_ops::read_directory` | Lists directory contents (name, path, is_dir, size, modified). Backend returns directories first, then alphabetical — but the frontend re-sorts based on the user's chosen column (see Sortable Columns in `docs/ui.md`). |
 | `get_home_dir` | `dirs::home_dir` | Returns the user's home directory path. |
 | `get_parent_dir` | `Path::parent` | Returns the parent directory of a given path. |
 | `open_entry` | `fs_ops::open_entry` | Opens a file/folder with the OS default app. Uses `open` on macOS, `xdg-open` on Linux, `cmd /C start` on Windows. |
