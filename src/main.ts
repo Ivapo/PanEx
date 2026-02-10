@@ -16,6 +16,8 @@ let fileClipboard: { entries: FileEntry[]; mode: "copy" | "cut" } | null = null;
 let sortField: SortField = (localStorage.getItem("paneexplorer_sort_field") as SortField) || "name";
 let sortDirection: SortDirection = (localStorage.getItem("paneexplorer_sort_dir") as SortDirection) || "asc";
 const dirSizeCache = new Map<string, number>();
+// Stores the full unfiltered entries per pane (for search re-filtering without disk reload)
+const rawEntriesMap = new Map<string, FileEntry[]>();
 
 function nextPaneId(): string {
   return "pane-" + paneCounter++;
@@ -62,16 +64,33 @@ function sortEntries(entries: FileEntry[], field: SortField, direction: SortDire
   });
 }
 
+/** Load directory and cache raw entries for search re-filtering */
+async function loadAndCacheDir(pane: PaneState): Promise<PaneState> {
+  const loaded = await loadDirectory(pane);
+  rawEntriesMap.set(pane.id, loaded.entries);
+  return loaded;
+}
+
+function filterSearch(pane: PaneState): PaneState {
+  if (!pane.searchQuery) return pane;
+  const query = pane.searchQuery.toLowerCase();
+  const entries = pane.entries.filter((e) => e.name.toLowerCase().includes(query));
+  return { ...pane, entries, focusIndex: entries.length > 0 ? 0 : -1 };
+}
+
 function applySortAndFilter(pane: PaneState): PaneState {
-  const filtered = filterHidden(pane);
-  const sorted = sortEntries(filtered.entries, sortField, sortDirection);
-  // Also sort children in cache
+  const hidden = filterHidden(pane);
+  const searched = filterSearch(hidden);
+  const sorted = sortEntries(searched.entries, sortField, sortDirection);
+  // Also sort/filter children in cache
   const sortedCache = new Map<string, FileEntry[]>();
-  for (const [path, children] of filtered.childrenCache) {
-    const filteredChildren = showHidden ? children : children.filter((e) => !e.name.startsWith("."));
+  const query = pane.searchQuery ? pane.searchQuery.toLowerCase() : "";
+  for (const [path, children] of searched.childrenCache) {
+    let filteredChildren = showHidden ? children : children.filter((e) => !e.name.startsWith("."));
+    if (query) filteredChildren = filteredChildren.filter((e) => e.name.toLowerCase().includes(query));
     sortedCache.set(path, sortEntries(filteredChildren, sortField, sortDirection));
   }
-  return { ...filtered, entries: sorted, childrenCache: sortedCache };
+  return { ...searched, entries: sorted, childrenCache: sortedCache };
 }
 
 function handleSortChange(field: SortField) {
@@ -88,6 +107,32 @@ function handleSortChange(field: SortField) {
     paneMap.set(id, applySortAndFilter(pane));
   }
   renderLayout();
+}
+
+function handleSearchChange(paneId: string, query: string) {
+  const pane = paneMap.get(paneId);
+  if (!pane) return;
+  // Use cached raw entries to re-filter without disk reload
+  const rawEntries = rawEntriesMap.get(paneId) ?? pane.entries;
+  const updated = applySortAndFilter({
+    ...pane,
+    entries: rawEntries,
+    searchQuery: query,
+  });
+  paneMap.set(paneId, updated);
+  renderLayout();
+  // Re-focus the search input after DOM rebuild
+  const container = document.querySelector(`.pane[data-pane-id="${paneId}"]`);
+  if (container) {
+    const input = container.querySelector<HTMLInputElement>(".pane-search-input");
+    if (input) {
+      input.focus();
+      // Place cursor at end
+      const len = input.value.length;
+      input.setSelectionRange(len, len);
+    }
+  }
+  computeAllDirSizes(paneId, updated);
 }
 
 function getActivePane(): PaneState | null {
@@ -339,6 +384,24 @@ function setupKeyboardShortcuts() {
       return;
     }
 
+    // Search: Cmd+F / Ctrl+F — focus search input in active pane
+    if (mod && e.key === "f") {
+      e.preventDefault();
+      if (!activePaneId) return;
+      const container = document.querySelector(`.pane[data-pane-id="${activePaneId}"]`);
+      if (!container) return;
+      const searchWrap = container.querySelector<HTMLElement>(".pane-search-wrap");
+      const searchInput = container.querySelector<HTMLInputElement>(".pane-search-input");
+      if (searchWrap && searchInput) {
+        searchWrap.style.display = "";
+        const pathEl = container.querySelector<HTMLElement>(".pane-path");
+        if (pathEl) pathEl.style.display = "none";
+        searchInput.focus();
+        searchInput.select();
+      }
+      return;
+    }
+
     // Close pane: Cmd+W (desktop only)
     if (e.key === "w" && mod && !web) {
       if (!activePaneId) return;
@@ -415,7 +478,7 @@ async function refilterAllPanes() {
   const reloads: Promise<void>[] = [];
   for (const [id, pane] of paneMap) {
     reloads.push(
-      loadDirectory(pane).then((updated) => {
+      loadAndCacheDir(pane).then((updated) => {
         paneMap.set(id, applySortAndFilter(updated));
       })
     );
@@ -545,8 +608,8 @@ async function initPanes() {
   const leftId = nextPaneId();
   const rightId = nextPaneId();
 
-  const leftPane = applySortAndFilter(await loadDirectory(createPane(leftId, homePath)));
-  const rightPane = applySortAndFilter(await loadDirectory(createPane(rightId, homePath)));
+  const leftPane = applySortAndFilter(await loadAndCacheDir(createPane(leftId, homePath)));
+  const rightPane = applySortAndFilter(await loadAndCacheDir(createPane(rightId, homePath)));
 
   paneMap.set(leftId, leftPane);
   paneMap.set(rightId, rightPane);
@@ -652,6 +715,21 @@ function renderNode(node: LayoutNode, totalPanes: number): HTMLElement {
       sortField,
       sortDirection,
       getDirSize: (path: string) => dirSizeCache.get(path) ?? null,
+      onSearchChange: (query: string) => handleSearchChange(paneId, query),
+      onSearchExit: () => {
+        const p = paneMap.get(paneId);
+        if (!p) return;
+        const dl = getDisplayList(p);
+        if (dl.length > 0) {
+          const first = dl[0]!.entry;
+          paneMap.set(paneId, { ...p, focusIndex: 0, selectedPaths: new Set([first.path]), lastClickedPath: first.path });
+          setKeyboardNav(true);
+          updateSelectionDOM();
+          updateFocusCursorDOM();
+          scrollFocusedRowIntoView();
+        }
+      },
+      searchQuery: pane.searchQuery,
     });
 
     paneEl.addEventListener("mousedown", () => {
@@ -740,7 +818,7 @@ async function handleSplitPane(paneId: string, direction: SplitDirection) {
 
   const sourcePane = paneMap.get(paneId);
   const newId = nextPaneId();
-  const newPane = applySortAndFilter(await loadDirectory(
+  const newPane = applySortAndFilter(await loadAndCacheDir(
     createPane(newId, sourcePane ? sourcePane.currentPath : homePath)
   ));
   paneMap.set(newId, newPane);
@@ -756,6 +834,7 @@ function handleClosePane(paneId: string) {
   if (!newRoot) return;
   layoutRoot = newRoot;
   paneMap.delete(paneId);
+  rawEntriesMap.delete(paneId);
   if (activePaneId === paneId) {
     const leafIds = collectLeafIds(layoutRoot);
     activePaneId = leafIds[0] ?? null;
@@ -951,6 +1030,10 @@ async function handleToggleExpand(paneId: string, entry: FileEntry) {
     // Expand: load children
     let children = await fs.readDir(entry.path);
     if (!showHidden) children = children.filter((e) => !e.name.startsWith("."));
+    if (pane.searchQuery) {
+      const query = pane.searchQuery.toLowerCase();
+      children = children.filter((e) => e.name.toLowerCase().includes(query));
+    }
     children = sortEntries(children, sortField, sortDirection);
     expandedPaths.add(entry.path);
     childrenCache.set(entry.path, children);
@@ -966,6 +1049,7 @@ async function handleNavigate(paneId: string, entry: FileEntry) {
   const pane = paneMap.get(paneId);
   if (!pane) return;
   const navigated = await navigateInto(pane, entry);
+  rawEntriesMap.set(paneId, navigated.entries);
   // Reset expansion state when navigating into a new directory
   const navResult = applySortAndFilter({
     ...navigated,
@@ -973,6 +1057,7 @@ async function handleNavigate(paneId: string, entry: FileEntry) {
     lastClickedPath: null,
     expandedPaths: new Set(),
     childrenCache: new Map(),
+    searchQuery: "",
   });
   paneMap.set(paneId, navResult);
   renderLayout();
@@ -983,7 +1068,8 @@ async function handleNavigateUp(paneId: string) {
   const pane = paneMap.get(paneId);
   if (!pane) return;
   const updated = await navigateUp(pane);
-  const upResult = applySortAndFilter({ ...updated, selectedPaths: new Set(), lastClickedPath: null, expandedPaths: new Set(), childrenCache: new Map() });
+  rawEntriesMap.set(paneId, updated.entries);
+  const upResult = applySortAndFilter({ ...updated, selectedPaths: new Set(), lastClickedPath: null, expandedPaths: new Set(), childrenCache: new Map(), searchQuery: "" });
   paneMap.set(paneId, upResult);
   renderLayout();
   computeAllDirSizes(paneId, upResult);
@@ -992,8 +1078,8 @@ async function handleNavigateUp(paneId: string) {
 async function handleHome(paneId: string) {
   const pane = paneMap.get(paneId);
   if (!pane) return;
-  const updated = await loadDirectory({ ...pane, currentPath: homePath });
-  const homeResult = applySortAndFilter({ ...updated, selectedPaths: new Set(), lastClickedPath: null, expandedPaths: new Set(), childrenCache: new Map() });
+  const updated = await loadAndCacheDir({ ...pane, currentPath: homePath });
+  const homeResult = applySortAndFilter({ ...updated, selectedPaths: new Set(), lastClickedPath: null, expandedPaths: new Set(), childrenCache: new Map(), searchQuery: "" });
   paneMap.set(paneId, homeResult);
   renderLayout();
   computeAllDirSizes(paneId, homeResult);
@@ -1206,7 +1292,7 @@ async function refreshPanesShowingPaths(...paths: string[]) {
   for (const [id, pane] of paneMap) {
     if (pathSet.has(pane.currentPath)) {
       reloads.push(
-        loadDirectory(pane).then((updated) => { paneMap.set(id, applySortAndFilter(updated)); })
+        loadAndCacheDir(pane).then((updated) => { paneMap.set(id, applySortAndFilter(updated)); })
       );
     }
   }

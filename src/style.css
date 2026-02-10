@@ -299,6 +299,61 @@ body {
   background: var(--bg-hover);
 }
 
+/* Search */
+.pane-search-btn {
+  background: none;
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: var(--radius);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pane-search-btn:hover {
+  background: var(--bg-hover);
+}
+
+.pane-search-wrap {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  position: relative;
+}
+
+.pane-search-input {
+  flex: 1;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  padding: 2px 24px 2px 8px;
+  font: inherit;
+  font-size: 12px;
+  outline: none;
+  min-width: 0;
+}
+
+.pane-search-clear {
+  position: absolute;
+  right: 2px;
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0 4px;
+  border-radius: var(--radius);
+}
+
+.pane-search-clear:hover {
+  color: var(--text-primary);
+}
+
 .pane-path {
   color: var(--text-secondary);
   font-size: 12px;
@@ -776,6 +831,44 @@ body {
   stroke: #1a1a1a;
 }
 
+[data-theme="3.1"] .pane-search-btn {
+  background: none;
+  border: none;
+  color: #1a1a1a;
+  padding: 0 4px;
+}
+
+[data-theme="3.1"] .pane-search-btn:hover {
+  background: rgba(0, 0, 0, 0.1);
+}
+
+[data-theme="3.1"] .pane-search-btn svg {
+  stroke: #1a1a1a;
+}
+
+[data-theme="3.1"] .pane-search-wrap {
+  height: 100%;
+  margin: 0 -6px 0 -6px;
+}
+
+[data-theme="3.1"] .pane-search-input {
+  background: #002244;
+  border: 1px solid var(--accent);
+  color: #ffffff;
+  font-size: 12px;
+  height: 100%;
+  padding: 0 24px 0 10px;
+}
+
+[data-theme="3.1"] .pane-search-clear {
+  color: #aaccee;
+  right: 6px;
+}
+
+[data-theme="3.1"] .pane-search-clear:hover {
+  color: #ffffff;
+}
+
 /* Path segment — terminal color 4 bg (blue), color 254 fg (white) */
 [data-theme="3.1"] .pane-path {
   background: #0055aa;
@@ -1134,6 +1227,7 @@ body {
 /* Header children break the top border line with a background */
 [data-theme="tui"] .pane-nav,
 [data-theme="tui"] .pane-header .pane-path,
+[data-theme="tui"] .pane-header .pane-search-wrap,
 [data-theme="tui"] .pane-header .pane-header-actions {
   background: var(--bg-primary);
   padding-left: 4px;
@@ -1158,6 +1252,31 @@ body {
 [data-theme="tui"] .back-btn:hover {
   color: var(--accent);
   background: none;
+}
+
+[data-theme="tui"] .pane-search-btn {
+  border: none;
+  color: var(--text-secondary);
+  padding: 1px 4px;
+}
+
+[data-theme="tui"] .pane-search-btn:hover {
+  color: var(--accent);
+  background: none;
+}
+
+[data-theme="tui"] .pane-search-input {
+  background: var(--bg-primary);
+  border: 1px solid var(--accent);
+}
+
+[data-theme="tui"] .pane-search-clear {
+  color: var(--text-secondary);
+  right: 6px;
+}
+
+[data-theme="tui"] .pane-search-clear:hover {
+  color: var(--accent);
 }
 
 /* Path: accent color like a ratatui Block title */

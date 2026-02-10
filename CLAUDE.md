@@ -60,7 +60,7 @@ pane-explorer/
 
 - Tabs within panes
 - Bookmarked/pinned directories
-- Search within a directory
+- ~~Search within a directory~~ *(done — per-pane real-time filter via magnifying glass icon or Cmd+F, case-insensitive name matching)*
 - Dark/light theme toggle
 - Keyboard shortcuts (arrows to navigate, enter to open, delete, cmd+c/v)
 - File preview (images, text, markdown)

@@ -12,6 +12,7 @@ export function createPane(id: string, initialPath: string): PaneState {
     expandedPaths: new Set(),
     childrenCache: new Map(),
     focusIndex: -1,
+    searchQuery: "",
   };
 }
 
@@ -56,6 +57,9 @@ export interface PaneCallbacks {
   sortField: SortField;
   sortDirection: SortDirection;
   getDirSize?: (path: string) => number | null;
+  onSearchChange: (query: string) => void;
+  onSearchExit?: () => void;
+  searchQuery: string;
 }
 
 export function renderPane(
@@ -86,12 +90,89 @@ export function renderPane(
   homeBtn.title = "Go home";
   homeBtn.addEventListener("click", callbacks.onHome);
 
+  const searchBtn = document.createElement("button");
+  searchBtn.className = "pane-search-btn";
+  searchBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="4"/><line x1="9" y1="9" x2="12.5" y2="12.5"/></svg>`;
+  searchBtn.title = "Search (Cmd+F)";
+
+  const searchInput = document.createElement("input");
+  searchInput.type = "text";
+  searchInput.className = "pane-search-input";
+  searchInput.placeholder = "Filter\u2026";
+  searchInput.value = callbacks.searchQuery;
+
+  const searchClearBtn = document.createElement("button");
+  searchClearBtn.className = "pane-search-clear";
+  searchClearBtn.textContent = "\u00d7";
+  searchClearBtn.title = "Clear search";
+
+  const searchWrap = document.createElement("div");
+  searchWrap.className = "pane-search-wrap";
+  searchWrap.appendChild(searchInput);
+  searchWrap.appendChild(searchClearBtn);
+
+  const searchActive = callbacks.searchQuery.length > 0;
+  searchWrap.style.display = searchActive ? "" : "none";
+  pathDisplay.style.display = searchActive ? "none" : "";
+
+  function showSearch() {
+    searchWrap.style.display = "";
+    pathDisplay.style.display = "none";
+    searchInput.focus();
+  }
+
+  function hideSearch() {
+    searchWrap.style.display = "none";
+    pathDisplay.style.display = "";
+    if (callbacks.searchQuery) {
+      callbacks.onSearchChange("");
+    }
+  }
+
+  searchBtn.addEventListener("click", () => {
+    if (searchWrap.style.display === "none") {
+      showSearch();
+    } else {
+      hideSearch();
+    }
+  });
+
+  searchClearBtn.addEventListener("click", () => {
+    hideSearch();
+  });
+
+  searchInput.addEventListener("input", () => {
+    callbacks.onSearchChange(searchInput.value);
+  });
+
+  searchInput.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      e.stopPropagation();
+      hideSearch();
+      searchInput.blur();
+    } else if (e.key === "ArrowDown") {
+      e.preventDefault();
+      e.stopPropagation();
+      searchInput.blur();
+      // Signal to select the first filtered result
+      if (callbacks.onSearchExit) callbacks.onSearchExit();
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      e.stopPropagation();
+      searchInput.blur();
+      if (callbacks.onSearchExit) callbacks.onSearchExit();
+    }
+  });
+
   const nav = document.createElement("div");
   nav.className = "pane-nav";
   nav.appendChild(backBtn);
   nav.appendChild(homeBtn);
+  nav.appendChild(searchBtn);
 
   header.appendChild(nav);
+  header.appendChild(searchWrap);
   header.appendChild(pathDisplay);
 
   const actions = document.createElement("div");

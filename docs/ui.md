@@ -100,6 +100,7 @@ Full keyboard navigation is supported. Shortcuts are platform-aware — modifier
 | Pane Mgmt (desktop) | Split right | `⌘→` | `Ctrl+→` |
 | | Split down | `⌘↓` | `Ctrl+↓` |
 | | Close pane | `⌘W` | `Ctrl+W` |
+| Search | Open search / filter | `⌘F` | `Ctrl+F` |
 | Other | Toggle hidden files | `⌘.` | `Ctrl+.` |
 
 **Web-specific**: Pane management shortcuts (split, close) are disabled on the web to avoid conflicts with browser shortcuts. Use the split/close buttons in the pane header instead.
@@ -131,6 +132,22 @@ Directories always sort before files regardless of sort field. Expanded folder c
 ### Hidden Files Toggle
 
 `⌘.` / `Ctrl+.` toggles visibility of dotfiles (files/folders starting with `.`). The state is tracked by a module-level `showHidden` boolean. When toggled, all panes reload from disk and re-filter. Expanded folder children also respect the filter.
+
+### Directory Search / Filter
+
+Each pane has a magnifying glass button in the header (after the home button). Clicking it or pressing `⌘F` / `Ctrl+F` reveals an inline search input that replaces the path display. Typing filters the pane's file list in real time — only entries whose name contains the query (case-insensitive) are shown. Expanded folder children are also filtered.
+
+| Action | Result |
+|--------|--------|
+| Click magnifying glass / `⌘F` | Show search input |
+| Type in search input | Filter entries in real time |
+| `↓` or `Enter` in search input | Exit search, select first result, enter keyboard nav |
+| `Escape` in search input | Clear filter, hide search input |
+| Click `×` clear button | Clear filter, hide search input |
+
+Search is per-pane — each pane maintains its own `searchQuery`. The filter resets to empty when navigating into a folder, going up, or going home.
+
+**Data model**: `searchQuery: string` on `PaneState` (default `""`). Raw (unfiltered) entries are cached in a module-level `rawEntriesMap` so that re-filtering on each keystroke doesn't require a disk reload. `filterSearch()` is chained into `applySortAndFilter()` after hidden-file filtering and before sorting.
 
 ### Context Menu
 Right-click (or Ctrl+click on Mac) a file/folder row to show a floating context menu with Open, Copy, Cut, Paste, Rename, and Delete options. Each item shows its keyboard shortcut hint on the right side. Auto-dismisses on click outside, Escape, or another right-click. Repositions if it would overflow the window edge.
