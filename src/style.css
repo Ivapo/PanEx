@@ -360,6 +360,47 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.breadcrumb-sep {
+  margin: 0 2px;
+  color: var(--text-secondary);
+  opacity: 0.5;
+  flex-shrink: 0;
+}
+
+.breadcrumb-segment {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  padding: 0 2px;
+  border-radius: var(--radius);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.breadcrumb-segment:hover {
+  color: var(--accent);
+  background: var(--bg-hover);
+}
+
+.breadcrumb-segment.breadcrumb-current {
+  color: var(--text-primary);
+  cursor: default;
+  flex-shrink: 0;
+}
+
+.breadcrumb-segment.breadcrumb-current:hover {
+  color: var(--text-primary);
+  background: none;
 }
 
 .pane-list {
@@ -888,6 +929,27 @@ body {
   min-width: 0;
 }
 
+[data-theme="3.1"] .breadcrumb-segment {
+  color: #ccddee;
+}
+
+[data-theme="3.1"] .breadcrumb-segment:hover {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.15);
+}
+
+[data-theme="3.1"] .breadcrumb-segment.breadcrumb-current {
+  color: #ffffff;
+}
+
+[data-theme="3.1"] .breadcrumb-segment.breadcrumb-current:hover {
+  background: none;
+}
+
+[data-theme="3.1"] .breadcrumb-sep {
+  color: #88aacc;
+}
+
 /* Actions segment — darker bg */
 [data-theme="3.1"] .pane-header-actions {
   background: #003366;
@@ -1284,6 +1346,23 @@ body {
   color: var(--accent);
   font-weight: bold;
   font-size: 12px;
+}
+
+[data-theme="tui"] .breadcrumb-segment {
+  color: var(--text-secondary);
+}
+
+[data-theme="tui"] .breadcrumb-segment:hover {
+  color: var(--accent);
+  background: none;
+}
+
+[data-theme="tui"] .breadcrumb-segment.breadcrumb-current {
+  color: var(--accent);
+}
+
+[data-theme="tui"] .breadcrumb-sep {
+  color: var(--text-secondary);
 }
 
 /* Column headers — sits above the border */

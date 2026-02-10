@@ -73,7 +73,10 @@ The new pane opens to the same directory as the pane it was split from. Splits c
 **Data model**: `LayoutNode = LayoutLeaf { paneId } | LayoutSplit { direction, first, second, ratio }`. Pane state is stored in a `Map<string, PaneState>` keyed by pane ID. Tree operations (`splitPane`, `removePane`, `countLeaves`) are pure functions in `layout.ts`.
 
 ### Pane Navigation
-Each pane header has a back button (arrow) and a home button (house icon). The back button navigates to the parent directory. The home button navigates to the user's home directory.
+Each pane header has a back button (arrow), a home button (house icon), and a search button (magnifying glass). The back button navigates to the parent directory. The home button navigates to the user's home directory.
+
+### Breadcrumb Path Bar
+The path display in each pane header shows the current directory as clickable breadcrumb segments separated by `/`. Clicking any parent segment navigates directly to that directory. The current (rightmost) segment is styled distinctly and is not clickable. Navigation via breadcrumb resets expansion state, selection, and search query — same as any other navigation action.
 
 ### Keyboard Shortcuts
 

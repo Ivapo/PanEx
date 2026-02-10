@@ -687,6 +687,7 @@ function renderNode(node: LayoutNode, totalPanes: number): HTMLElement {
 
     const paneEl = renderPane(pane, paneId, {
       onNavigate: (entry: FileEntry) => handleNavigate(paneId, entry),
+      onNavigateTo: (path: string) => handleNavigateTo(paneId, path),
       onNavigateUp: () => handleNavigateUp(paneId),
       onHome: () => handleHome(paneId),
       onOpen: (entry: FileEntry) => handleOpen(entry),
@@ -1043,6 +1044,23 @@ async function handleToggleExpand(paneId: string, entry: FileEntry) {
   paneMap.set(paneId, expandResult);
   renderLayout();
   computeAllDirSizes(paneId, expandResult);
+}
+
+async function handleNavigateTo(paneId: string, path: string) {
+  const pane = paneMap.get(paneId);
+  if (!pane) return;
+  const updated = await loadAndCacheDir({ ...pane, currentPath: path });
+  const result = applySortAndFilter({
+    ...updated,
+    selectedPaths: new Set(),
+    lastClickedPath: null,
+    expandedPaths: new Set(),
+    childrenCache: new Map(),
+    searchQuery: "",
+  });
+  paneMap.set(paneId, result);
+  renderLayout();
+  computeAllDirSizes(paneId, result);
 }
 
 async function handleNavigate(paneId: string, entry: FileEntry) {

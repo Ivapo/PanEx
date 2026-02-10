@@ -38,6 +38,7 @@ export async function navigateInto(
 
 export interface PaneCallbacks {
   onNavigate: (entry: FileEntry) => void;
+  onNavigateTo: (path: string) => void;
   onNavigateUp: () => void;
   onHome: () => void;
   onOpen: (entry: FileEntry) => void;
@@ -82,7 +83,32 @@ export function renderPane(
 
   const pathDisplay = document.createElement("span");
   pathDisplay.className = "pane-path";
-  pathDisplay.textContent = pane.currentPath;
+
+  // Build clickable breadcrumb segments
+  const parts = pane.currentPath.split("/").filter(Boolean);
+  for (let i = 0; i < parts.length; i++) {
+    if (i > 0) {
+      const sep = document.createElement("span");
+      sep.className = "breadcrumb-sep";
+      sep.textContent = "/";
+      pathDisplay.appendChild(sep);
+    }
+    const segment = document.createElement("button");
+    segment.className = "breadcrumb-segment";
+    segment.textContent = parts[i]!;
+    const segPath = "/" + parts.slice(0, i + 1).join("/");
+    if (i < parts.length - 1) {
+      // Parent segments are clickable
+      segment.addEventListener("click", (e) => {
+        e.stopPropagation();
+        callbacks.onNavigateTo(segPath);
+      });
+    } else {
+      // Current directory — not clickable
+      segment.classList.add("breadcrumb-current");
+    }
+    pathDisplay.appendChild(segment);
+  }
 
   const homeBtn = document.createElement("button");
   homeBtn.className = "back-btn";
