@@ -46,6 +46,24 @@ function showFolderPicker() {
   title.className = "landing-title";
   title.textContent = "PaneExplorer";
 
+  const themeRow = document.createElement("div");
+  themeRow.className = "landing-theme-row";
+
+  const themeLabel = document.createElement("span");
+  themeLabel.className = "landing-theme-label";
+  themeLabel.textContent = "mode :";
+
+  const themeToggle = document.createElement("button");
+  themeToggle.className = "landing-theme";
+  themeToggle.textContent = THEME_LABELS[getTheme()] ?? "Dark";
+  themeToggle.addEventListener("click", () => {
+    cycleTheme();
+    themeToggle.textContent = THEME_LABELS[getTheme()] ?? "Dark";
+  });
+
+  themeRow.appendChild(themeLabel);
+  themeRow.appendChild(themeToggle);
+
   const subtitle = document.createElement("p");
   subtitle.className = "landing-subtitle";
   subtitle.textContent = "Choose a folder to get started";
@@ -64,9 +82,10 @@ function showFolderPicker() {
 
   const note = document.createElement("p");
   note.className = "landing-note";
-  note.textContent = "Requires Chrome or Edge. Files stay on your device.";
+  note.textContent = "Requires Chrome or Edge. Files never leave your device.";
 
   landing.appendChild(title);
+  landing.appendChild(themeRow);
   landing.appendChild(subtitle);
   landing.appendChild(btn);
   landing.appendChild(note);
