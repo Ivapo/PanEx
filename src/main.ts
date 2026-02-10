@@ -89,16 +89,16 @@ function setupKeyboardShortcuts() {
     const web = isBrowser();
     const pane = getActivePane();
 
-    // Split right: Cmd+Right (desktop) or Cmd+Alt+Right (web)
-    if (e.key === "ArrowRight" && mod && (!web || e.altKey)) {
+    // Split right: Cmd+Right (desktop only)
+    if (e.key === "ArrowRight" && mod && !web) {
       if (!activePaneId) return;
       e.preventDefault();
       handleSplitPane(activePaneId, "vertical");
       return;
     }
 
-    // Split down: Cmd+Down (desktop) or Cmd+Alt+Down (web)
-    if (e.key === "ArrowDown" && mod && (!web || e.altKey)) {
+    // Split down: Cmd+Down (desktop only)
+    if (e.key === "ArrowDown" && mod && !web) {
       if (!activePaneId) return;
       e.preventDefault();
       handleSplitPane(activePaneId, "horizontal");
