@@ -656,6 +656,11 @@ function renderLayout() {
   const toolbar = document.createElement("div");
   toolbar.className = "global-toolbar";
 
+  const toolbarTitle = document.createElement("span");
+  toolbarTitle.className = "toolbar-title";
+  toolbarTitle.textContent = "PaneExplorer";
+  toolbar.appendChild(toolbarTitle);
+
   const themeBtn = document.createElement("button");
   themeBtn.className = "theme-btn";
   themeBtn.textContent = THEME_LABELS[getTheme()] ?? "Dark";

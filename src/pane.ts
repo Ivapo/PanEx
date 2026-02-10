@@ -350,6 +350,13 @@ export function renderPane(
     const icon = document.createElement("span");
     icon.className = "entry-icon";
     icon.textContent = entry.is_dir ? "\uD83D\uDCC1" : "\uD83D\uDCC4";
+    if (entry.is_dir) {
+      icon.style.cursor = "pointer";
+      icon.addEventListener("click", (e) => {
+        e.stopPropagation();
+        callbacks.onToggleExpand(entry);
+      });
+    }
 
     const name = document.createElement("span");
     name.className = "entry-name";

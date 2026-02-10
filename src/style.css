@@ -1,10 +1,10 @@
 :root {
-  --bg-primary: #1e1e2e;
-  --bg-secondary: #313244;
+  --bg-primary: #09090b;
+  --bg-secondary: #27272a;
   --bg-hover: #45475a;
-  --text-primary: #cdd6f4;
-  --text-secondary: #a6adc8;
-  --border-color: #585b70;
+  --text-primary: #ffffff;
+  --text-secondary: #a1a1aa;
+  --border-color: #3a3a42;
   --accent: #89b4fa;
   --danger: #e64553;
   --radius: 4px;
@@ -22,8 +22,8 @@
   --bg-primary: #faf6e9;
   --bg-secondary: #f0eacd;
   --bg-hover: #ccd0da;
-  --text-primary: #4c4f69;
-  --text-secondary: #6c6f85;
+  --text-primary: #7b2d8e;
+  --text-secondary: #2563eb;
   --border-color: #89cfef;
   --accent: #1e66f5;
   --danger: #d20f39;
@@ -201,11 +201,16 @@ body {
 .global-toolbar {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
   padding: 2px var(--spacing-md);
-  background: var(--bg-secondary);
+  background: var(--bg-primary);
   border-bottom: 1px solid var(--border-color);
   flex-shrink: 0;
+}
+
+.toolbar-title {
+  color: var(--text-secondary);
+  font-size: 12px;
+  margin-right: auto;
 }
 
 .theme-btn {
@@ -244,19 +249,19 @@ body {
 }
 
 .pane.active-pane .pane-header {
-  border-bottom-color: var(--accent);
+  border-bottom-color: #a1a1aa;
 }
 
 .divider-vertical {
   width: 4px;
-  background: var(--border-color);
+  background: #1a2233;
   cursor: col-resize;
   flex-shrink: 0;
 }
 
 .divider-horizontal {
   height: 4px;
-  background: var(--border-color);
+  background: #1a2233;
   cursor: row-resize;
   flex-shrink: 0;
 }
@@ -290,9 +295,14 @@ body {
   border: 1px solid var(--border-color);
   color: var(--text-primary);
   cursor: pointer;
-  padding: 2px 8px;
   border-radius: var(--radius);
   font-size: 14px;
+  width: 28px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
 }
 
 .back-btn:hover {
@@ -305,11 +315,13 @@ body {
   border: 1px solid var(--border-color);
   color: var(--text-primary);
   cursor: pointer;
-  padding: 2px 6px;
   border-radius: var(--radius);
+  width: 28px;
+  height: 24px;
   display: flex;
   align-items: center;
   justify-content: center;
+  padding: 0;
 }
 
 .pane-search-btn:hover {
@@ -453,13 +465,37 @@ body {
 }
 
 .pane-row.is-dir .entry-name {
-  color: var(--accent);
+  color: #c4c4c9;
 }
 
 .entry-icon {
   flex-shrink: 0;
   width: 20px;
   text-align: center;
+}
+
+/* Dark mode: replace emoji with SVG icons */
+[data-theme="dark"] .entry-icon {
+  font-size: 0;
+  line-height: 0;
+}
+
+[data-theme="dark"] .pane-row.is-dir .entry-icon::after {
+  content: "";
+  display: inline-block;
+  width: 15px;
+  height: 15px;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%23d97706'%3E%3Cpath d='M1 3.5A1.5 1.5 0 0 1 2.5 2h3.879a1.5 1.5 0 0 1 1.06.44l1.122 1.12A1.5 1.5 0 0 0 9.62 4H13.5A1.5 1.5 0 0 1 15 5.5v7a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 1 12.5v-9z'/%3E%3C/svg%3E") no-repeat center;
+  background-size: contain;
+}
+
+[data-theme="dark"] .pane-row:not(.is-dir) .entry-icon::after {
+  content: "";
+  display: inline-block;
+  width: 13px;
+  height: 15px;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%23a1a1aa'%3E%3Cpath d='M4 0a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V4.5L9.5 0H4zm5.5 1.5v3h3'/%3E%3C/svg%3E") no-repeat center;
+  background-size: contain;
 }
 
 .entry-name {
@@ -528,7 +564,7 @@ body {
 }
 
 .column-header-item.active {
-  color: var(--accent);
+  color: var(--text-primary);
   font-weight: 600;
 }
 
@@ -772,6 +808,64 @@ body {
   75% { transform: translateX(4px); }
 }
 
+[data-theme="light"] .entry-icon {
+  font-size: 0;
+  line-height: 0;
+}
+
+[data-theme="light"] .pane-row.is-dir .entry-icon::after {
+  content: "";
+  display: inline-block;
+  width: 15px;
+  height: 15px;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%23eab308'%3E%3Cpath d='M1 3.5A1.5 1.5 0 0 1 2.5 2h3.879a1.5 1.5 0 0 1 1.06.44l1.122 1.12A1.5 1.5 0 0 0 9.62 4H13.5A1.5 1.5 0 0 1 15 5.5v7a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 1 12.5v-9z'/%3E%3C/svg%3E") no-repeat center;
+  background-size: contain;
+}
+
+[data-theme="light"] .pane-row:not(.is-dir) .entry-icon::after {
+  content: "";
+  display: inline-block;
+  width: 13px;
+  height: 15px;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%23ec4899'%3E%3Cpath d='M4 0a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V4.5L9.5 0H4zm5.5 1.5v3h3'/%3E%3C/svg%3E") no-repeat center;
+  background-size: contain;
+}
+
+[data-theme="light"] .pane-row.is-dir .entry-name {
+  color: #ea580c;
+}
+
+[data-theme="light"] .divider-vertical,
+[data-theme="light"] .divider-horizontal {
+  background: #86efac;
+}
+
+[data-theme="light"] .pane.active-pane .pane-header {
+  border-bottom-color: transparent;
+  position: relative;
+}
+
+[data-theme="light"] .pane.active-pane .pane-header::after {
+  content: "";
+  position: absolute;
+  bottom: -1px;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, #e40303, #ff8c00, #ffed00, #008026, #004dff, #750787);
+}
+
+[data-theme="light"] .pane.active-pane .pane-header::before {
+  content: "";
+  position: absolute;
+  top: -1px;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, #e40303, #ff8c00, #ffed00, #008026, #004dff, #750787);
+  z-index: 1;
+}
+
 /* Light theme — pink toolbar */
 [data-theme="light"] .global-toolbar {
   background: #f4c2d0;
@@ -830,6 +924,14 @@ body {
 /* Pane gets a visible border like a TUI panel */
 [data-theme="3.1"] .pane {
   border: 1px solid var(--border-color);
+}
+
+[data-theme="3.1"] .pane.active-pane {
+  border-top-color: var(--accent);
+}
+
+[data-theme="3.1"] .pane.active-pane .pane-header {
+  border-bottom-color: var(--accent);
 }
 
 /* ── Powerline Header (p10k style) ── */
@@ -1064,10 +1166,8 @@ body {
   font-size: 12px;
 }
 
-[data-theme="3.1"] .global-toolbar::before {
-  content: "PaneExplorer";
+[data-theme="3.1"] .toolbar-title {
   color: #585858;
-  margin-right: auto;
 }
 
 [data-theme="3.1"] .theme-btn {
@@ -1267,6 +1367,10 @@ body {
   border: 1px solid var(--border-color);
   pointer-events: none;
   z-index: 0;
+}
+
+[data-theme="tui"] .pane.active-pane::after {
+  border-color: var(--accent);
 }
 
 /* Divider: invisible gap, just a resize handle */
@@ -1518,10 +1622,8 @@ body {
   padding: 2px 8px;
 }
 
-[data-theme="tui"] .global-toolbar::before {
-  content: "PaneExplorer";
+[data-theme="tui"] .toolbar-title {
   color: var(--text-secondary);
-  margin-right: auto;
   font-size: 11px;
 }
 
