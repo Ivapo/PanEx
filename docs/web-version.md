@@ -32,7 +32,7 @@ Detection is automatic at module load time. All filesystem calls in `main.ts` an
 - **File opening**: Opens files in a new tab via `createObjectURL` (images render, text/PDF display, other files download).
 - **Handle caching**: `BrowserFs` maintains a `Map<string, FileSystemDirectoryHandle>` cache for resolved paths, avoiding redundant handle traversal.
 - **Rename**: Uses the `move()` method on `FileSystemFileHandle` if available (Chrome 86+), otherwise falls back to copy+delete.
-- **Keyboard shortcuts**: Split pane shortcuts use an extra `Alt` modifier (`⌘⌥→` / `Ctrl+Alt+→`) to avoid overriding browser navigation. Close pane (`⌘W` / `Ctrl+W`) is disabled in the browser to avoid closing the tab. All other shortcuts work the same.
+- **Keyboard shortcuts**: Pane management shortcuts (split right/down, close pane) are disabled on the web to avoid conflicts with browser shortcuts. Use the split/close buttons in the pane header instead. All other shortcuts (navigation, selection, file operations, hidden files toggle) work the same.
 
 ## Web Banner
 

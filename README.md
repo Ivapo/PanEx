@@ -44,13 +44,15 @@ A lightweight, multi-pane file explorer built with Tauri v2, Rust, and TypeScrip
 | Delete | `⌘⌫` | `Delete` |
 | Rename | `F2` | same |
 
-### Pane Management
+### Pane Management (Desktop Only)
 
-| Action | Desktop Mac | Desktop Windows | Web |
-|---|---|---|---|
-| Split right | `⌘→` | `Ctrl+→` | `⌘⌥→` / `Ctrl+Alt+→` |
-| Split down | `⌘↓` | `Ctrl+↓` | `⌘⌥↓` / `Ctrl+Alt+↓` |
-| Close pane | `⌘W` | `Ctrl+W` | _(UI only)_ |
+| Action | Mac | Windows |
+|---|---|---|
+| Split right | `⌘→` | `Ctrl+→` |
+| Split down | `⌘↓` | `Ctrl+↓` |
+| Close pane | `⌘W` | `Ctrl+W` |
+
+> On web, use the split/close buttons in the pane header.
 
 ### Other
 

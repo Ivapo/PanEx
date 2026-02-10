@@ -97,12 +97,12 @@ Full keyboard navigation is supported. Shortcuts are platform-aware — modifier
 | | Paste | `⌘V` | `Ctrl+V` |
 | | Delete | `⌘⌫` | `Delete` |
 | | Rename | `F2` | same |
-| Pane Mgmt | Split right | `⌘→` | `Ctrl+→` |
+| Pane Mgmt (desktop) | Split right | `⌘→` | `Ctrl+→` |
 | | Split down | `⌘↓` | `Ctrl+↓` |
 | | Close pane | `⌘W` | `Ctrl+W` |
 | Other | Toggle hidden files | `⌘.` | `Ctrl+.` |
 
-**Web-specific**: Split shortcuts use an extra `Alt` modifier (`⌘⌥→` / `Ctrl+Alt+→`) to avoid browser conflicts. Close pane has no web shortcut (`⌘W` / `Ctrl+W` would close the browser tab).
+**Web-specific**: Pane management shortcuts (split, close) are disabled on the web to avoid conflicts with browser shortcuts. Use the split/close buttons in the pane header instead.
 
 **Guard conditions**: Shortcuts are disabled when a dialog overlay is open or an input/textarea is focused (e.g., during inline rename).
 
