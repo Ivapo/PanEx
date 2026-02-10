@@ -1,6 +1,6 @@
 import { fs, isBrowser } from "./fs.ts";
 import type { FileEntry, PaneState, LayoutNode, LayoutSplit, SplitDirection } from "./types.ts";
-import { createPane, loadDirectory, navigateInto, navigateUp, renderPane } from "./pane.ts";
+import { createPane, loadDirectory, navigateInto, navigateUp, renderPane, buildDisplayList } from "./pane.ts";
 import { countLeaves, splitPane, removePane } from "./layout.ts";
 import { canAddPane, setLicenseKey } from "./licensing.ts";
 import { initTheme, cycleTheme, getTheme } from "./theme.ts";
@@ -10,6 +10,7 @@ const paneMap = new Map<string, PaneState>();
 let homePath = "";
 let paneCounter = 0;
 let bannerDismissed = false;
+let activePaneId: string | null = null;
 
 function nextPaneId(): string {
   return "pane-" + paneCounter++;
@@ -174,9 +175,19 @@ function renderNode(node: LayoutNode, totalPanes: number): HTMLElement {
       onOpen: (entry: FileEntry) => handleOpen(entry),
       onRename: (entry: FileEntry, newName: string) => handleRename(paneId, entry, newName),
       onDelete: (entry: FileEntry) => handleDelete(paneId, entry),
-      onDrop: (entry: FileEntry, sourcePaneId: string, copy: boolean) =>
-        handleDrop(paneId, entry, sourcePaneId, copy),
+      onDrop: (entries: FileEntry[], sourcePaneId: string, copy: boolean) =>
+        handleDrop(paneId, entries, sourcePaneId, copy),
+      getDragEntries: (entry: FileEntry) => {
+        const currentPane = paneMap.get(paneId);
+        if (!currentPane || !currentPane.selectedPaths.has(entry.path)) {
+          return [entry];
+        }
+        const dl = buildDisplayList(currentPane.entries, currentPane.expandedPaths, currentPane.childrenCache, 0);
+        return dl.filter((item) => currentPane.selectedPaths.has(item.entry.path)).map((item) => item.entry);
+      },
       onToggleExpand: (entry: FileEntry) => handleToggleExpand(paneId, entry),
+      onSelect: (entry: FileEntry, modifiers: { shift: boolean; metaOrCtrl: boolean }) =>
+        handleSelect(paneId, entry, modifiers),
       onSplitRight: () => handleSplitPane(paneId, "vertical"),
       onSplitBottom: () => handleSplitPane(paneId, "horizontal"),
       onClose: showClose ? () => handleClosePane(paneId) : undefined,
@@ -360,6 +371,87 @@ function showLicensePrompt(): Promise<boolean> {
   });
 }
 
+function handleSelect(
+  paneId: string,
+  entry: FileEntry,
+  modifiers: { shift: boolean; metaOrCtrl: boolean }
+) {
+  // If clicking in a different pane, clear previous pane's selection
+  if (activePaneId && activePaneId !== paneId) {
+    const prevPane = paneMap.get(activePaneId);
+    if (prevPane) {
+      paneMap.set(activePaneId, {
+        ...prevPane,
+        selectedPaths: new Set(),
+        lastClickedPath: null,
+      });
+    }
+  }
+  activePaneId = paneId;
+
+  const pane = paneMap.get(paneId);
+  if (!pane) return;
+
+  const selectedPaths = new Set(pane.selectedPaths);
+
+  if (modifiers.metaOrCtrl) {
+    // Cmd/Ctrl+click: toggle individual item
+    if (selectedPaths.has(entry.path)) {
+      selectedPaths.delete(entry.path);
+    } else {
+      selectedPaths.add(entry.path);
+    }
+    paneMap.set(paneId, { ...pane, selectedPaths, lastClickedPath: entry.path });
+  } else if (modifiers.shift && pane.lastClickedPath) {
+    // Shift+click: range select
+    const displayList = buildDisplayList(
+      pane.entries,
+      pane.expandedPaths,
+      pane.childrenCache,
+      0
+    );
+    const paths = displayList.map((item) => item.entry.path);
+    const anchorIdx = paths.indexOf(pane.lastClickedPath);
+    const targetIdx = paths.indexOf(entry.path);
+
+    if (anchorIdx !== -1 && targetIdx !== -1) {
+      const start = Math.min(anchorIdx, targetIdx);
+      const end = Math.max(anchorIdx, targetIdx);
+      const rangeSelection = new Set<string>();
+      for (let i = start; i <= end; i++) {
+        const p = paths[i];
+        if (p) rangeSelection.add(p);
+      }
+      paneMap.set(paneId, { ...pane, selectedPaths: rangeSelection });
+    }
+  } else {
+    // Plain click: clear selection, select this one
+    paneMap.set(paneId, {
+      ...pane,
+      selectedPaths: new Set([entry.path]),
+      lastClickedPath: entry.path,
+    });
+  }
+
+  updateSelectionDOM();
+}
+
+function updateSelectionDOM() {
+  for (const [id, pane] of paneMap) {
+    const container = document.querySelector(`.pane[data-pane-id="${id}"]`);
+    if (!container) continue;
+    const rows = container.querySelectorAll<HTMLElement>(".pane-row");
+    for (const row of rows) {
+      const path = row.dataset.path;
+      if (path && pane.selectedPaths.has(path)) {
+        row.classList.add("selected");
+      } else {
+        row.classList.remove("selected");
+      }
+    }
+  }
+}
+
 async function handleToggleExpand(paneId: string, entry: FileEntry) {
   const pane = paneMap.get(paneId);
   if (!pane || !entry.is_dir) return;
@@ -396,6 +488,8 @@ async function handleNavigate(paneId: string, entry: FileEntry) {
   // Reset expansion state when navigating into a new directory
   paneMap.set(paneId, {
     ...navigated,
+    selectedPaths: new Set(),
+    lastClickedPath: null,
     expandedPaths: new Set(),
     childrenCache: new Map(),
   });
@@ -406,7 +500,7 @@ async function handleNavigateUp(paneId: string) {
   const pane = paneMap.get(paneId);
   if (!pane) return;
   const updated = await navigateUp(pane);
-  paneMap.set(paneId, { ...updated, expandedPaths: new Set(), childrenCache: new Map() });
+  paneMap.set(paneId, { ...updated, selectedPaths: new Set(), lastClickedPath: null, expandedPaths: new Set(), childrenCache: new Map() });
   renderLayout();
 }
 
@@ -414,7 +508,7 @@ async function handleHome(paneId: string) {
   const pane = paneMap.get(paneId);
   if (!pane) return;
   const updated = await loadDirectory({ ...pane, currentPath: homePath });
-  paneMap.set(paneId, { ...updated, expandedPaths: new Set(), childrenCache: new Map() });
+  paneMap.set(paneId, { ...updated, selectedPaths: new Set(), lastClickedPath: null, expandedPaths: new Set(), childrenCache: new Map() });
   renderLayout();
 }
 
@@ -466,7 +560,7 @@ async function handleDelete(paneId: string, entry: FileEntry) {
 
 async function handleDrop(
   targetPaneId: string,
-  entry: FileEntry,
+  entries: FileEntry[],
   sourcePaneId: string,
   isCopy: boolean
 ) {
@@ -474,56 +568,54 @@ async function handleDrop(
   if (!targetPane) return;
   const destDir = targetPane.currentPath;
 
-  // Check for name conflict
-  const conflict = targetPane.entries.some((e) => e.name === entry.name);
-  if (conflict) {
-    const choice = await showConflictDialog(entry.name);
-    if (choice === "cancel") return;
+  for (const entry of entries) {
+    // Check for name conflict
+    const conflict = targetPane.entries.some((e) => e.name === entry.name);
+    if (conflict) {
+      const choice = await showConflictDialog(entry.name);
+      if (choice === "cancel") return;
 
-    if (choice === "keep-both") {
-      const newName = generateUniqueName(entry.name, targetPane.entries);
-      try {
-        if (isCopy) {
-          await fs.copyEntry(entry.path, destDir);
-        } else {
-          await fs.moveEntry(entry.path, destDir);
+      if (choice === "keep-both") {
+        const newName = generateUniqueName(entry.name, targetPane.entries);
+        try {
+          if (isCopy) {
+            await fs.copyEntry(entry.path, destDir);
+          } else {
+            await fs.moveEntry(entry.path, destDir);
+          }
+          const destPath = destDir + "/" + entry.name;
+          await fs.renameEntry(destPath, newName);
+        } catch (e) {
+          alert(`Operation failed: ${e}`);
         }
-        const destPath = destDir + "/" + entry.name;
-        await fs.renameEntry(destPath, newName);
-      } catch (e) {
-        alert(`Operation failed: ${e}`);
+        continue;
       }
-      await refreshPanesShowingPaths(
-      paneMap.get(sourcePaneId)?.currentPath ?? "",
-      paneMap.get(targetPaneId)?.currentPath ?? ""
-    );
-      return;
+
+      // choice === "replace": delete existing then proceed
+      const existingPath = destDir + "/" + entry.name;
+      try {
+        await fs.deleteEntry(existingPath);
+      } catch (e) {
+        alert(`Failed to replace: ${e}`);
+        continue;
+      }
     }
 
-    // choice === "replace": delete existing then proceed
-    const existingPath = destDir + "/" + entry.name;
     try {
-      await fs.deleteEntry(existingPath);
+      if (isCopy) {
+        await fs.copyEntry(entry.path, destDir);
+      } else {
+        await fs.moveEntry(entry.path, destDir);
+      }
     } catch (e) {
-      alert(`Failed to replace: ${e}`);
-      return;
+      alert(`Operation failed: ${e}`);
     }
-  }
-
-  try {
-    if (isCopy) {
-      await fs.copyEntry(entry.path, destDir);
-    } else {
-      await fs.moveEntry(entry.path, destDir);
-    }
-  } catch (e) {
-    alert(`Operation failed: ${e}`);
   }
 
   await refreshPanesShowingPaths(
-      paneMap.get(sourcePaneId)?.currentPath ?? "",
-      paneMap.get(targetPaneId)?.currentPath ?? ""
-    );
+    paneMap.get(sourcePaneId)?.currentPath ?? "",
+    paneMap.get(targetPaneId)?.currentPath ?? ""
+  );
 }
 
 async function refreshPanesShowingPaths(...paths: string[]) {

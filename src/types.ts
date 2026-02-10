@@ -10,7 +10,8 @@ export interface PaneState {
   id: string;
   currentPath: string;
   entries: FileEntry[];
-  selectedIndex: number;
+  selectedPaths: Set<string>;
+  lastClickedPath: string | null;
   expandedPaths: Set<string>;
   childrenCache: Map<string, FileEntry[]>;
 }

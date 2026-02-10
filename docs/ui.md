@@ -84,10 +84,24 @@ Triggered from context menu. Replaces the filename span with a text input. For f
 ### Delete Confirmation Dialog
 Modal overlay with "Move to Trash" and "Cancel" buttons. Cancel is focused by default (safety). Dismisses on Escape or clicking outside the dialog. Uses a red accent (`var(--danger)`) for the danger button.
 
-### Inline Folder Expansion (Tree View)
-Single-click a folder to expand it inline, showing its children indented below the folder row with a toggle arrow (▶ collapsed, ▼ expanded). This works recursively — expanding nested folders stacks the indentation. Single-click again to collapse.
+### File Selection
+Click a file or folder row to select it. Only one pane can have an active selection at a time — clicking in another pane clears the previous one's selection. Selection resets when navigating into a folder, going up, or going home.
 
-Double-click still navigates into the folder as the pane root (unchanged behavior). A 200ms delay on single-click prevents the expand from firing on double-clicks.
+| Action | Result |
+|--------|--------|
+| Click row | Select (clears previous selection) |
+| Cmd/Ctrl + click | Toggle item in/out of selection |
+| Shift + click | Range select from last clicked item |
+| Click in different pane | Clears other pane's selection |
+
+**Multi-drag**: Dragging a selected item drags all selected items together. The drag ghost shows the item count (e.g. "3 items"). Dragging an unselected item drags only that one. Conflict resolution dialogs appear per-file when dropping multiple items.
+
+**Data model**: Selection is tracked per-pane via `selectedPaths: Set<string>` and `lastClickedPath: string | null` on `PaneState`. Shift+click computes the range from the display list (the flattened tree including expanded children). Selection changes update CSS classes in-place without re-rendering, preserving scroll position.
+
+### Inline Folder Expansion (Tree View)
+Click the toggle arrow (▶/▼) on a folder row to expand it inline, showing its children indented below. This works recursively — expanding nested folders stacks the indentation. Click the arrow again to collapse.
+
+Clicking anywhere else on the folder row selects it (does not expand). Double-click navigates into the folder as the pane root.
 
 Collapsing a parent folder also collapses all expanded children underneath it. Navigating into a folder (double-click), going up, or going home resets the expansion state.
 
@@ -99,13 +113,13 @@ Collapsing a parent folder also collapses all expanded children underneath it. N
 Double-click or context menu Open. Directories navigate into them; files open in the OS default application.
 
 ### Drag and Drop Between Panes
-Drag files or folders from one pane and drop them onto any other pane's file list. Panes are identified by string IDs (not indices) in the drag data.
+Drag files or folders from one pane and drop them onto any other pane's file list. Supports single and multi-file drag — if multiple items are selected, dragging any selected item drags the entire selection. Dragging an unselected item drags only that one. Panes are identified by string IDs (not indices) in the drag data.
 
-- **Move (default)**: Drag and drop moves the file — it disappears from the source pane and appears in the target.
-- **Copy (Option/Alt held)**: Hold the Option key (Alt on Windows/Linux) while dropping to copy instead. The file stays in the source and appears in the target.
+- **Move (default)**: Drag and drop moves the file(s) — they disappear from the source pane and appear in the target.
+- **Copy (Option/Alt held)**: Hold the Option key (Alt on Windows/Linux) while dropping to copy instead. The files stay in the source and appear in the target.
 - **Same-pane drop prevention**: Dropping onto the same pane is a no-op.
-- **Visual feedback**: The dragged row gets reduced opacity (0.4). The target pane's file list gets an accent-colored outline highlight. A compact drag ghost shows the icon + filename.
-- **Name conflict dialog**: When a file with the same name already exists in the target, a modal appears with three choices:
+- **Visual feedback**: The dragged row gets reduced opacity (0.4). The target pane's file list gets an accent-colored outline highlight. A compact drag ghost shows the icon + filename for single items, or "N items" for multi-selection.
+- **Name conflict dialog**: When dropping multiple files, conflict resolution is handled per-file. When a file with the same name already exists in the target, a modal appears with three choices:
   - **Replace** — Deletes the existing file in the target, then performs the move/copy.
   - **Keep Both** — Performs the move/copy, then auto-renames the new file with a ` (2)` suffix (incrementing if needed).
   - **Cancel** — Aborts the operation.

@@ -7,7 +7,8 @@ export function createPane(id: string, initialPath: string): PaneState {
     id,
     currentPath: initialPath,
     entries: [],
-    selectedIndex: -1,
+    selectedPaths: new Set(),
+    lastClickedPath: null,
     expandedPaths: new Set(),
     childrenCache: new Map(),
   };
@@ -15,7 +16,7 @@ export function createPane(id: string, initialPath: string): PaneState {
 
 export async function loadDirectory(pane: PaneState): Promise<PaneState> {
   const entries = await fs.readDir(pane.currentPath);
-  return { ...pane, entries, selectedIndex: -1 };
+  return { ...pane, entries, selectedPaths: new Set(), lastClickedPath: null };
 }
 
 export async function navigateUp(pane: PaneState): Promise<PaneState> {
@@ -40,8 +41,10 @@ export interface PaneCallbacks {
   onOpen: (entry: FileEntry) => void;
   onRename: (entry: FileEntry, newName: string) => void;
   onDelete: (entry: FileEntry) => void;
-  onDrop: (entry: FileEntry, sourcePaneId: string, copy: boolean) => void;
+  onDrop: (entries: FileEntry[], sourcePaneId: string, copy: boolean) => void;
+  getDragEntries: (entry: FileEntry) => FileEntry[];
   onToggleExpand: (entry: FileEntry) => void;
+  onSelect: (entry: FileEntry, modifiers: { shift: boolean; metaOrCtrl: boolean }) => void;
   onSplitRight?: () => void;
   onSplitBottom?: () => void;
   onClose?: () => void;
@@ -140,11 +143,11 @@ export function renderPane(
     const json = e.dataTransfer?.getData("text/plain");
     if (!json) return;
 
-    const data = JSON.parse(json) as { entry: FileEntry; sourcePaneId: string };
+    const data = JSON.parse(json) as { entries: FileEntry[]; sourcePaneId: string };
     // Prevent drop onto the same pane
     if (data.sourcePaneId === paneId) return;
 
-    callbacks.onDrop(data.entry, data.sourcePaneId, e.altKey);
+    callbacks.onDrop(data.entries, data.sourcePaneId, e.altKey);
   });
 
   const displayList = buildDisplayList(
@@ -154,29 +157,33 @@ export function renderPane(
     0
   );
 
-  // Timer for distinguishing single-click from double-click on folders
-  let clickTimer: ReturnType<typeof setTimeout> | null = null;
-
   for (const { entry, depth } of displayList) {
     const row = document.createElement("div");
-    row.className = `pane-row${entry.is_dir ? " is-dir" : ""}`;
+    const selected = pane.selectedPaths.has(entry.path);
+    row.className = `pane-row${entry.is_dir ? " is-dir" : ""}${selected ? " selected" : ""}`;
     row.draggable = true;
+    row.dataset.path = entry.path;
     row.style.setProperty("--depth", String(depth));
 
     // Drag handlers on row
     row.addEventListener("dragstart", (e) => {
       row.classList.add("dragging");
       if (e.dataTransfer) {
+        const dragEntries = callbacks.getDragEntries(entry);
         e.dataTransfer.effectAllowed = "copyMove";
         e.dataTransfer.setData(
           "text/plain",
-          JSON.stringify({ entry, sourcePaneId: paneId })
+          JSON.stringify({ entries: dragEntries, sourcePaneId: paneId })
         );
 
-        // Custom compact drag image (icon + name only)
+        // Custom compact drag image
         const ghost = document.createElement("div");
         ghost.className = "drag-ghost";
-        ghost.textContent = `${entry.is_dir ? "\uD83D\uDCC1" : "\uD83D\uDCC4"} ${entry.name}`;
+        if (dragEntries.length > 1) {
+          ghost.textContent = `${dragEntries.length} items`;
+        } else {
+          ghost.textContent = `${entry.is_dir ? "\uD83D\uDCC1" : "\uD83D\uDCC4"} ${entry.name}`;
+        }
         document.body.appendChild(ghost);
         e.dataTransfer.setDragImage(ghost, 0, 0);
         requestAnimationFrame(() => ghost.remove());
@@ -192,6 +199,10 @@ export function renderPane(
     toggle.className = "folder-toggle";
     if (entry.is_dir) {
       toggle.textContent = pane.expandedPaths.has(entry.path) ? "\u25BC" : "\u25B6";
+      toggle.addEventListener("click", (e) => {
+        e.stopPropagation();
+        callbacks.onToggleExpand(entry);
+      });
     }
     row.appendChild(toggle);
 
@@ -211,25 +222,22 @@ export function renderPane(
     row.appendChild(name);
     row.appendChild(size);
 
-    // Single-click on folder row → toggle expand (with delay to avoid firing on dblclick)
-    if (entry.is_dir) {
-      row.addEventListener("click", (e) => {
-        e.preventDefault();
-        if (clickTimer) clearTimeout(clickTimer);
-        clickTimer = setTimeout(() => {
-          clickTimer = null;
-          callbacks.onToggleExpand(entry);
-        }, 200);
+    // Prevent native text selection on shift+click
+    row.addEventListener("mousedown", (e) => {
+      if (e.shiftKey) e.preventDefault();
+    });
+
+    // Single-click → select
+    row.addEventListener("click", (e) => {
+      e.preventDefault();
+      callbacks.onSelect(entry, {
+        shift: e.shiftKey,
+        metaOrCtrl: e.metaKey || e.ctrlKey,
       });
-    }
+    });
 
     row.addEventListener("dblclick", (e) => {
       e.preventDefault();
-      // Cancel pending single-click expand
-      if (clickTimer) {
-        clearTimeout(clickTimer);
-        clickTimer = null;
-      }
       window.getSelection()?.removeAllRanges();
       if (entry.is_dir) {
         callbacks.onNavigate(entry);
@@ -271,7 +279,7 @@ export function renderPane(
   return container;
 }
 
-function buildDisplayList(
+export function buildDisplayList(
   entries: FileEntry[],
   expandedPaths: Set<string>,
   childrenCache: Map<string, FileEntry[]>,

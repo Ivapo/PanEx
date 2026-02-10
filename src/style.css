@@ -327,6 +327,11 @@ body {
   text-align: center;
   line-height: 1;
   margin-right: -4px;
+  cursor: pointer;
+}
+
+.pane-row.selected {
+  background: var(--bg-hover);
 }
 
 .pane-row:hover {
@@ -697,6 +702,19 @@ body {
   border-bottom: none;
 }
 
+/* Block-style selected: full invert like cursor selection */
+[data-theme="3.1"] .pane-row.selected {
+  background: var(--accent);
+  color: var(--tui-hover-text);
+}
+
+[data-theme="3.1"] .pane-row.selected .entry-name,
+[data-theme="3.1"] .pane-row.selected .entry-size,
+[data-theme="3.1"] .pane-row.selected .entry-icon,
+[data-theme="3.1"] .pane-row.selected .folder-toggle {
+  color: var(--tui-hover-text);
+}
+
 /* Block-style hover: full invert like cursor selection */
 [data-theme="3.1"] .pane-row:hover {
   background: var(--accent);
@@ -715,6 +733,7 @@ body {
   font-weight: bold;
 }
 
+[data-theme="3.1"] .pane-row.selected.is-dir .entry-name,
 [data-theme="3.1"] .pane-row:hover.is-dir .entry-name {
   color: var(--tui-hover-text);
 }
@@ -893,7 +912,8 @@ body {
   color: var(--text-secondary);
 }
 
-/* Hover: invert icon color too */
+/* Selected/hover: invert icon color too */
+[data-theme="3.1"] .pane-row.selected .entry-icon::after,
 [data-theme="3.1"] .pane-row:hover .entry-icon::after {
   color: var(--tui-hover-text);
 }
@@ -1010,6 +1030,11 @@ body {
   gap: 6px;
   line-height: 1.6;
   border-left: 2px solid transparent;
+}
+
+[data-theme="tui"] .pane-row.selected {
+  background: var(--bg-hover);
+  border-left-color: var(--accent);
 }
 
 [data-theme="tui"] .pane-row:hover {
