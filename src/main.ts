@@ -9,6 +9,7 @@ let layoutRoot: LayoutNode;
 const paneMap = new Map<string, PaneState>();
 let homePath = "";
 let paneCounter = 0;
+let bannerDismissed = false;
 
 function nextPaneId(): string {
   return "pane-" + paneCounter++;
@@ -23,8 +24,56 @@ const THEME_LABELS: Record<string, string> = {
 
 async function init() {
   initTheme();
-  homePath = await fs.getHomeDir();
 
+  if (isBrowser()) {
+    showFolderPicker();
+    return;
+  }
+
+  homePath = await fs.getHomeDir();
+  await initPanes();
+}
+
+function showFolderPicker() {
+  const app = document.getElementById("app");
+  if (!app) return;
+  app.innerHTML = "";
+
+  const landing = document.createElement("div");
+  landing.className = "landing";
+
+  const title = document.createElement("h1");
+  title.className = "landing-title";
+  title.textContent = "PaneExplorer";
+
+  const subtitle = document.createElement("p");
+  subtitle.className = "landing-subtitle";
+  subtitle.textContent = "Choose a folder to get started";
+
+  const btn = document.createElement("button");
+  btn.className = "landing-btn";
+  btn.textContent = "Open Folder";
+  btn.addEventListener("click", async () => {
+    try {
+      homePath = await fs.getHomeDir();
+      await initPanes();
+    } catch {
+      // User cancelled the picker — do nothing
+    }
+  });
+
+  const note = document.createElement("p");
+  note.className = "landing-note";
+  note.textContent = "Requires Chrome or Edge. Files stay on your device.";
+
+  landing.appendChild(title);
+  landing.appendChild(subtitle);
+  landing.appendChild(btn);
+  landing.appendChild(note);
+  app.appendChild(landing);
+}
+
+async function initPanes() {
   const leftId = nextPaneId();
   const rightId = nextPaneId();
 
@@ -51,11 +100,20 @@ function renderLayout() {
   app.innerHTML = "";
 
   // Web banner (browser mode only)
-  if (isBrowser()) {
+  if (isBrowser() && !bannerDismissed) {
     const banner = document.createElement("div");
     banner.className = "web-banner";
     banner.innerHTML =
       'You\'re using the web version — <a href="https://paneexplorer.app" target="_blank">Download the native app</a> for the full experience';
+    const closeBtn = document.createElement("button");
+    closeBtn.className = "web-banner-close";
+    closeBtn.textContent = "[close]";
+    closeBtn.addEventListener("click", (e) => {
+      e.preventDefault();
+      bannerDismissed = true;
+      banner.remove();
+    });
+    banner.appendChild(closeBtn);
     app.appendChild(banner);
   }
 

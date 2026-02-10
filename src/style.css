@@ -82,6 +82,50 @@ body {
   background: var(--bg-primary);
 }
 
+/* Landing Page (browser mode) */
+.landing {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  gap: var(--spacing-lg);
+  text-align: center;
+}
+
+.landing-title {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.landing-subtitle {
+  color: var(--text-secondary);
+  font-size: 15px;
+}
+
+.landing-btn {
+  background: var(--accent);
+  color: #1e1e2e;
+  border: none;
+  border-radius: var(--radius-lg);
+  padding: 12px 32px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.landing-btn:hover {
+  filter: brightness(0.9);
+}
+
+.landing-note {
+  color: var(--text-secondary);
+  font-size: 12px;
+  opacity: 0.7;
+}
+
 /* Web Banner */
 .web-banner {
   background: var(--accent);
@@ -96,6 +140,22 @@ body {
   color: inherit;
   font-weight: 600;
   text-decoration: underline;
+}
+
+.web-banner-close {
+  background: none;
+  border: none;
+  color: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  margin-left: 8px;
+  padding: 0;
+  opacity: 0.7;
+  font-family: inherit;
+}
+
+.web-banner-close:hover {
+  opacity: 1;
 }
 
 /* Global Toolbar */
@@ -619,7 +679,7 @@ body {
 }
 
 [data-theme="3.1"] .global-toolbar::before {
-  content: "╭─ PaneExplorer ";
+  content: "PaneExplorer";
   color: #585858;
   margin-right: auto;
 }
@@ -989,7 +1049,7 @@ body {
 }
 
 [data-theme="tui"] .global-toolbar::before {
-  content: "╭─ PaneExplorer ";
+  content: "PaneExplorer";
   color: var(--text-secondary);
   margin-right: auto;
   font-size: 11px;
