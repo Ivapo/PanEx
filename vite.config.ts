@@ -5,6 +5,7 @@ export default defineConfig(({ mode }) => {
 
   return {
     root: "src",
+    base: isWeb ? "/PanEx/demo/" : "/",
     build: {
       outDir: isWeb ? "../dist-web" : "../dist",
       emptyOutDir: true,
