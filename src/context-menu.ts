@@ -2,6 +2,7 @@ export interface MenuItem {
   label: string;
   shortcut?: string;
   action: () => void;
+  divider?: boolean;
 }
 
 let activeMenu: HTMLElement | null = null;
@@ -20,6 +21,11 @@ export function showContextMenu(x: number, y: number, items: MenuItem[]) {
   menu.className = "context-menu";
 
   for (const item of items) {
+    if (item.divider) {
+      const hr = document.createElement("div");
+      hr.className = "context-menu-divider";
+      menu.appendChild(hr);
+    }
     const menuItem = document.createElement("div");
     menuItem.className = "context-menu-item";
 

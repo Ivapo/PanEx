@@ -132,7 +132,7 @@ function handleSearchChange(paneId: string, query: string) {
       input.setSelectionRange(len, len);
     }
   }
-  computeAllDirSizes(paneId, updated);
+
 }
 
 function getActivePane(): PaneState | null {
@@ -485,45 +485,14 @@ async function refilterAllPanes() {
   }
   await Promise.all(reloads);
   renderLayout();
-  for (const [id, p] of paneMap) computeAllDirSizes(id, p);
 }
 
-const dirSizeQueue: Array<{ paneId: string; entry: FileEntry }> = [];
-let dirSizeActive = 0;
-const DIR_SIZE_CONCURRENCY = 2;
-
-function computeAllDirSizes(paneId: string, pane: PaneState) {
-  const displayList = buildDisplayList(pane.entries, pane.expandedPaths, pane.childrenCache, 0);
-  for (const { entry } of displayList) {
-    if (entry.is_dir && !dirSizeCache.has(entry.path)) {
-      dirSizeQueue.push({ paneId, entry });
-    }
-  }
-  drainDirSizeQueue();
-}
-
-function drainDirSizeQueue() {
-  while (dirSizeActive < DIR_SIZE_CONCURRENCY && dirSizeQueue.length > 0) {
-    const item = dirSizeQueue.shift()!;
-    if (dirSizeCache.has(item.entry.path)) continue;
-    dirSizeActive++;
-    fs.getDirSize(item.entry.path).then((size) => {
-      dirSizeCache.set(item.entry.path, size);
-      updateDirSizeDOM(item.entry.path, size);
-    }).catch(() => { /* silently skip */ }).finally(() => {
-      dirSizeActive--;
-      drainDirSizeQueue();
-    });
-  }
-}
-
-function updateDirSizeDOM(path: string, size: number) {
-  // Update all matching rows across all panes (same dir may appear in multiple panes)
-  const rows = document.querySelectorAll<HTMLElement>(`.pane-row[data-path="${CSS.escape(path)}"]`);
-  for (const row of rows) {
-    const sizeEl = row.querySelector<HTMLElement>(".entry-size");
-    if (sizeEl) sizeEl.textContent = formatSize(size);
-  }
+async function computeDirSize(path: string): Promise<number> {
+  const cached = dirSizeCache.get(path);
+  if (cached !== undefined) return cached;
+  const size = await fs.getDirSize(path);
+  dirSizeCache.set(path, size);
+  return size;
 }
 
 function formatSize(bytes: number): string {
@@ -626,7 +595,7 @@ async function initPanes() {
 
   setupKeyboardShortcuts();
   renderLayout();
-  for (const [id, p] of paneMap) computeAllDirSizes(id, p);
+
 }
 
 function renderLayout() {
@@ -721,6 +690,8 @@ function renderNode(node: LayoutNode, totalPanes: number): HTMLElement {
       sortField,
       sortDirection,
       getDirSize: (path: string) => dirSizeCache.get(path) ?? null,
+      onGetDirSize: (entry) => computeDirSize(entry.path),
+
       onSearchChange: (query: string) => handleSearchChange(paneId, query),
       onSearchExit: () => {
         const p = paneMap.get(paneId);
@@ -831,7 +802,6 @@ async function handleSplitPane(paneId: string, direction: SplitDirection) {
 
   layoutRoot = splitPane(layoutRoot, paneId, newId, direction);
   renderLayout();
-  computeAllDirSizes(newId, newPane);
 }
 
 function handleClosePane(paneId: string) {
@@ -863,7 +833,7 @@ function showLicensePrompt(): Promise<boolean> {
     const messageEl = document.createElement("div");
     messageEl.className = "dialog-message";
     messageEl.textContent =
-      "Free version supports up to 3 panes. Enter a license key to unlock more.";
+      "Enter a license key to unlock unlimited panes, or just install from source.";
 
     const input = document.createElement("input");
     input.type = "text";
@@ -1048,7 +1018,6 @@ async function handleToggleExpand(paneId: string, entry: FileEntry) {
   const expandResult = { ...pane, expandedPaths, childrenCache };
   paneMap.set(paneId, expandResult);
   renderLayout();
-  computeAllDirSizes(paneId, expandResult);
 }
 
 async function handleNavigateTo(paneId: string, path: string) {
@@ -1065,7 +1034,6 @@ async function handleNavigateTo(paneId: string, path: string) {
   });
   paneMap.set(paneId, result);
   renderLayout();
-  computeAllDirSizes(paneId, result);
 }
 
 async function handleNavigate(paneId: string, entry: FileEntry) {
@@ -1084,7 +1052,6 @@ async function handleNavigate(paneId: string, entry: FileEntry) {
   });
   paneMap.set(paneId, navResult);
   renderLayout();
-  computeAllDirSizes(paneId, navResult);
 }
 
 async function handleNavigateUp(paneId: string) {
@@ -1095,7 +1062,6 @@ async function handleNavigateUp(paneId: string) {
   const upResult = applySortAndFilter({ ...updated, selectedPaths: new Set(), lastClickedPath: null, expandedPaths: new Set(), childrenCache: new Map(), searchQuery: "" });
   paneMap.set(paneId, upResult);
   renderLayout();
-  computeAllDirSizes(paneId, upResult);
 }
 
 async function handleHome(paneId: string) {
@@ -1105,7 +1071,6 @@ async function handleHome(paneId: string) {
   const homeResult = applySortAndFilter({ ...updated, selectedPaths: new Set(), lastClickedPath: null, expandedPaths: new Set(), childrenCache: new Map(), searchQuery: "" });
   paneMap.set(paneId, homeResult);
   renderLayout();
-  computeAllDirSizes(paneId, homeResult);
 }
 
 async function handleOpen(entry: FileEntry) {
@@ -1321,9 +1286,6 @@ async function refreshPanesShowingPaths(...paths: string[]) {
   }
   await Promise.all(reloads);
   renderLayout();
-  for (const [id, p] of paneMap) {
-    if (pathSet.has(p.currentPath)) computeAllDirSizes(id, p);
-  }
 }
 
 function generateUniqueName(name: string, entries: FileEntry[]): string {

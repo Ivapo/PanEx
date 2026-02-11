@@ -58,6 +58,7 @@ export interface PaneCallbacks {
   sortField: SortField;
   sortDirection: SortDirection;
   getDirSize?: (path: string) => number | null;
+  onGetDirSize?: (entry: FileEntry) => Promise<number>;
   onSearchChange: (query: string) => void;
   onSearchExit?: () => void;
   searchQuery: string;
@@ -365,8 +366,7 @@ export function renderPane(
     const size = document.createElement("span");
     size.className = "entry-size";
     if (entry.is_dir) {
-      const cached = callbacks.getDirSize?.(entry.path) ?? null;
-      size.textContent = cached !== null ? formatSize(cached) : "--";
+      size.textContent = "";
     } else {
       size.textContent = formatSize(entry.size);
     }
@@ -415,7 +415,7 @@ export function renderPane(
       e.preventDefault();
       const isMac = navigator.platform.toUpperCase().includes("MAC");
       const mod = isMac ? "\u2318" : "Ctrl+";
-      showContextMenu(e.clientX, e.clientY, [
+      const items: import("./context-menu.ts").MenuItem[] = [
         {
           label: "Open",
           shortcut: "Enter",
@@ -452,7 +452,29 @@ export function renderPane(
           shortcut: isMac ? "\u2318\u232B" : "Del",
           action: () => callbacks.onDelete(entry),
         },
-      ]);
+      ];
+      if (entry.is_dir && callbacks.onGetDirSize) {
+        const cached = callbacks.getDirSize?.(entry.path) ?? null;
+        items.push({
+          label: "Size",
+          shortcut: cached !== null ? formatSize(cached) : "...",
+          action: () => {},
+          divider: true,
+        });
+        if (cached === null) {
+          callbacks.onGetDirSize(entry).then((sz) => {
+            const menuEl = document.querySelector(".context-menu");
+            if (!menuEl) return;
+            const menuItems = menuEl.querySelectorAll(".context-menu-item");
+            const last = menuItems[menuItems.length - 1];
+            if (last) {
+              const shortcutEl = last.querySelector(".context-menu-shortcut");
+              if (shortcutEl) shortcutEl.textContent = formatSize(sz);
+            }
+          });
+        }
+      }
+      showContextMenu(e.clientX, e.clientY, items);
     });
 
     list.appendChild(row);

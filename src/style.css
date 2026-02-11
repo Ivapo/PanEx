@@ -510,7 +510,7 @@ body {
   font-size: 12px;
   flex-shrink: 0;
   width: 64px;
-  text-align: left;
+  text-align: center;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -575,17 +575,17 @@ body {
 
 .col-type {
   width: 64px;
-  text-align: left;
+  text-align: center;
 }
 
 .col-size {
   width: 60px;
-  text-align: right;
+  text-align: center;
 }
 
 .col-date {
   width: 110px;
-  text-align: right;
+  text-align: center;
 }
 
 .sort-indicator {
@@ -593,10 +593,6 @@ body {
 }
 
 /* Drag and Drop */
-.pane-row[draggable] {
-  cursor: grab;
-}
-
 .pane-row.dragging {
   opacity: 0.4;
 }
@@ -651,6 +647,12 @@ body {
 
 .context-menu-item:hover {
   background: var(--bg-hover);
+}
+
+.context-menu-divider {
+  height: 1px;
+  background: var(--border-color);
+  margin: var(--spacing-xs) 0;
 }
 
 /* Inline Rename Input */

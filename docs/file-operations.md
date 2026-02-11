@@ -30,11 +30,11 @@ File copy/cut/paste uses an in-app clipboard (`fileClipboard` in `main.ts`), not
 
 ## Directory Sizes
 
-Directories display their total disk usage in the Size column, computed asynchronously after each directory load. Sizes show "--" as a placeholder until the computation finishes, then update in-place without a full re-render.
+Directory sizes are computed on-demand via the right-click context menu. Right-clicking a folder shows "Size: ..." while computing, then updates with the actual size.
 
-- **Async & throttled**: Computations are queued and limited to 2 concurrent calls to avoid blocking the Rust thread pool. Sizes trickle in gradually rather than stalling the UI.
-- **Cached**: Results are stored in an in-memory `dirSizeCache` (keyed by path) for the session. Navigating back to a previously visited directory shows sizes immediately.
-- **Disk usage, not logical size**: On Unix, uses `stat.blocks * 512` (actual disk blocks) instead of `metadata.len()`. This gives accurate sizes for sparse files (e.g., Docker.raw reports real usage, not the pre-allocated virtual size). Individual file sizes also use disk usage for consistency.
+- **On-demand**: No automatic background computation — sizes are only calculated when the user requests them via context menu.
+- **Cached**: Results are stored in an in-memory `dirSizeCache` (keyed by path) for the session. Right-clicking the same folder again shows the size instantly.
+- **Disk usage, not logical size**: On Unix, uses `stat.blocks * 512` (actual disk blocks) instead of `metadata.len()`. This gives accurate sizes for sparse files.
 - **Sort integration**: When sorting by Size, directories use their cached computed size (or 0 if not yet computed).
 - **Browser mode**: Uses the File System Access API to recursively walk directories and sum `file.size`.
 
