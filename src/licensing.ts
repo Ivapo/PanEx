@@ -1,7 +1,10 @@
+declare const __DISABLE_PAYWALL__: boolean;
+
 const LICENSE_KEY_STORAGE = "paneexplorer_license_key";
 export const MAX_FREE_PANES = 3;
 
 export function isPremium(): boolean {
+  if (__DISABLE_PAYWALL__) return true;
   const key = localStorage.getItem(LICENSE_KEY_STORAGE);
   return key !== null && validateLicenseKey(key);
 }

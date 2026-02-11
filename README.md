@@ -81,6 +81,16 @@ bun run tauri dev
 bun run tauri build
 ```
 
+## Unlocking Premium
+
+Premium unlocks unlimited panes (free tier allows up to 3). If you'd like to support the project, you can [buy a license](https://panex.lemonsqueezy.com/buy).
+
+If you prefer to build from source with all features unlocked:
+
+```bash
+DISABLE_PAYWALL=1 bun run tauri build
+```
+
 ## License
 
 [MIT](LICENSE)
