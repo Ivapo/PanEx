@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PanEx — Multi-Pane File Explorer</title>
+  <meta name="description" content="A lightweight, keyboard-driven multi-pane file explorer. Browse directories side by side with drag & drop, 4 themes, and full keyboard navigation.">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #09090b;
+      --bg-elevated: #18181b;
+      --bg-card: #1c1c20;
+      --border: #27272a;
+      --text: #fafafa;
+      --text-muted: #a1a1aa;
+      --accent: #3b82f6;
+      --accent-hover: #2563eb;
+      --green: #22c55e;
+      --max-w: 1100px;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    /* Ad placeholders */
+    .ad-slot {
+      max-width: var(--max-w);
+      margin: 0 auto;
+      padding: 0 1.5rem;
+    }
+    .ad-slot-inner {
+      border: 1px dashed var(--border);
+      border-radius: 8px;
+      padding: 1rem;
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 0.8rem;
+      background: var(--bg-elevated);
+    }
+
+    /* Hero */
+    .hero {
+      max-width: var(--max-w);
+      margin: 0 auto;
+      padding: 4rem 1.5rem 3rem;
+      text-align: center;
+    }
+    .hero h1 {
+      font-size: 3rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      margin-bottom: 0.25rem;
+    }
+    .hero h1 span { color: var(--accent); }
+    .hero .version {
+      display: inline-block;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      border: 1px solid var(--border);
+      border-radius: 9999px;
+      padding: 0.15rem 0.6rem;
+      margin-left: 0.5rem;
+      vertical-align: super;
+    }
+    .hero .tagline {
+      font-size: 1.25rem;
+      color: var(--text-muted);
+      margin: 1rem 0 2.5rem;
+      max-width: 600px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+
+    /* Buttons */
+    .btn-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      justify-content: center;
+      margin-bottom: 1rem;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.65rem 1.4rem;
+      border-radius: 8px;
+      font-size: 0.95rem;
+      font-weight: 500;
+      border: none;
+      cursor: pointer;
+      transition: background 0.15s, transform 0.1s;
+      text-decoration: none;
+    }
+    .btn:hover { text-decoration: none; transform: translateY(-1px); }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-primary:hover { background: var(--accent-hover); }
+    .btn-secondary { background: var(--bg-elevated); color: var(--text); border: 1px solid var(--border); }
+    .btn-secondary:hover { background: var(--border); }
+    .btn-green { background: var(--green); color: #000; font-weight: 600; }
+    .btn-green:hover { background: #16a34a; }
+
+    /* Section shared */
+    section {
+      max-width: var(--max-w);
+      margin: 0 auto;
+      padding: 3rem 1.5rem;
+    }
+    section h2 {
+      font-size: 1.75rem;
+      font-weight: 600;
+      margin-bottom: 1.5rem;
+      text-align: center;
+    }
+
+    /* Features grid */
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+      gap: 1rem;
+    }
+    .feature-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.25rem;
+    }
+    .feature-card .icon {
+      font-size: 1.5rem;
+      margin-bottom: 0.5rem;
+    }
+    .feature-card h3 {
+      font-size: 1rem;
+      font-weight: 600;
+      margin-bottom: 0.35rem;
+    }
+    .feature-card p {
+      font-size: 0.875rem;
+      color: var(--text-muted);
+      line-height: 1.5;
+    }
+
+    /* Shortcuts table */
+    .shortcuts-wrap {
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    .shortcuts-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.9rem;
+    }
+    .shortcuts-table th,
+    .shortcuts-table td {
+      text-align: left;
+      padding: 0.6rem 1rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .shortcuts-table th {
+      color: var(--text-muted);
+      font-weight: 500;
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      background: var(--bg-elevated);
+      position: sticky;
+      top: 0;
+    }
+    .shortcuts-table td { white-space: nowrap; }
+    .shortcuts-table tbody tr:hover { background: var(--bg-elevated); }
+    kbd {
+      display: inline-block;
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 0.1rem 0.4rem;
+      font-family: inherit;
+      font-size: 0.8rem;
+      line-height: 1.4;
+    }
+    .desktop-only {
+      color: var(--text-muted);
+      font-size: 0.75rem;
+      font-style: italic;
+    }
+
+    /* Category row */
+    .cat-row td {
+      font-weight: 600;
+      color: var(--accent);
+      padding-top: 1rem;
+      border-bottom: none;
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    /* Footer */
+    footer {
+      max-width: var(--max-w);
+      margin: 0 auto;
+      padding: 2rem 1.5rem;
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 0.85rem;
+      border-top: 1px solid var(--border);
+    }
+    footer a { color: var(--text-muted); }
+    footer a:hover { color: var(--text); }
+
+    /* Responsive */
+    @media (max-width: 640px) {
+      .hero h1 { font-size: 2rem; }
+      .hero .tagline { font-size: 1.05rem; }
+      .btn { font-size: 0.85rem; padding: 0.55rem 1rem; }
+      section { padding: 2rem 1rem; }
+      .shortcuts-table { font-size: 0.8rem; }
+      .shortcuts-table th, .shortcuts-table td { padding: 0.5rem 0.6rem; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Ad Slot: Top Banner -->
+  <div class="ad-slot" style="padding-top: 1.5rem;">
+    <div class="ad-slot-inner">
+      <!-- AD: Insert ad script here (e.g. Google AdSense top banner, 728x90) -->
+      Ad Space
+    </div>
+  </div>
+
+  <!-- Hero -->
+  <header class="hero">
+    <h1><span>PanEx</span> &mdash; PaneExplorer <span class="version">v0.1</span></h1>
+    <p class="tagline">Browse directories side by side.</p>
+
+    <div class="btn-row">
+      <a href="https://github.com/Ivapo/PanEx/releases/latest" class="btn btn-primary">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        macOS
+      </a>
+      <a href="https://github.com/Ivapo/PanEx/releases/latest" class="btn btn-primary">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Windows
+      </a>
+      <a href="https://github.com/Ivapo/PanEx/releases/latest" class="btn btn-primary">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Linux
+      </a>
+    </div>
+
+    <div class="btn-row">
+      <a href="https://github.com/Ivapo/PanEx" class="btn btn-secondary">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
+        Open GitHub Repo
+      </a>
+    </div>
+
+    <div class="btn-row">
+      <a href="./demo/" class="btn btn-secondary">Try Web Demo</a>
+      <a href="https://panex.lemonsqueezy.com/buy" class="btn btn-green">&#9749; Buy me a coffee</a>
+    </div>
+  </header>
+
+  <!-- Keyboard Shortcuts -->
+  <section>
+    <h2>Keyboard Shortcuts</h2>
+    <div class="shortcuts-wrap">
+      <table class="shortcuts-table">
+        <thead>
+          <tr>
+            <th>Action</th>
+            <th>Mac</th>
+            <th>Windows / Linux</th>
+            <th>Web</th>
+          </tr>
+        </thead>
+        <tbody>
+          <!-- Navigation -->
+          <tr class="cat-row"><td colspan="4">Navigation</td></tr>
+          <tr><td>Move cursor up</td><td><kbd>&uarr;</kbd></td><td><kbd>&uarr;</kbd></td><td>Yes</td></tr>
+          <tr><td>Move cursor down</td><td><kbd>&darr;</kbd></td><td><kbd>&darr;</kbd></td><td>Yes</td></tr>
+          <tr><td>Open / Enter folder</td><td><kbd>Enter</kbd></td><td><kbd>Enter</kbd></td><td>Yes</td></tr>
+          <tr><td>Go up directory</td><td><kbd>Backspace</kbd></td><td><kbd>Backspace</kbd></td><td>Yes</td></tr>
+          <tr><td>Go to home</td><td><kbd>Home</kbd></td><td><kbd>Home</kbd></td><td>Yes</td></tr>
+          <tr><td>Switch pane</td><td><kbd>Tab</kbd></td><td><kbd>Tab</kbd></td><td>Yes</td></tr>
+          <tr><td>Deselect / Exit</td><td><kbd>Esc</kbd></td><td><kbd>Esc</kbd></td><td>Yes</td></tr>
+
+          <!-- Selection -->
+          <tr class="cat-row"><td colspan="4">Selection</td></tr>
+          <tr><td>Extend selection up</td><td><kbd>Shift</kbd>+<kbd>&uarr;</kbd></td><td><kbd>Shift</kbd>+<kbd>&uarr;</kbd></td><td>Yes</td></tr>
+          <tr><td>Extend selection down</td><td><kbd>Shift</kbd>+<kbd>&darr;</kbd></td><td><kbd>Shift</kbd>+<kbd>&darr;</kbd></td><td>Yes</td></tr>
+          <tr><td>Select all</td><td><kbd>&#8984;</kbd>+<kbd>A</kbd></td><td><kbd>Ctrl</kbd>+<kbd>A</kbd></td><td>Yes</td></tr>
+
+          <!-- File Operations -->
+          <tr class="cat-row"><td colspan="4">File Operations</td></tr>
+          <tr><td>Copy</td><td><kbd>&#8984;</kbd>+<kbd>C</kbd></td><td><kbd>Ctrl</kbd>+<kbd>C</kbd></td><td>Yes</td></tr>
+          <tr><td>Cut</td><td><kbd>&#8984;</kbd>+<kbd>X</kbd></td><td><kbd>Ctrl</kbd>+<kbd>X</kbd></td><td>Yes</td></tr>
+          <tr><td>Paste</td><td><kbd>&#8984;</kbd>+<kbd>V</kbd></td><td><kbd>Ctrl</kbd>+<kbd>V</kbd></td><td>Yes</td></tr>
+          <tr><td>Delete / Trash</td><td><kbd>&#8984;</kbd>+<kbd>&#9003;</kbd></td><td><kbd>Delete</kbd></td><td>Yes</td></tr>
+          <tr><td>Rename</td><td><kbd>F2</kbd></td><td><kbd>F2</kbd></td><td>Yes</td></tr>
+
+          <!-- Pane Management -->
+          <tr class="cat-row"><td colspan="4">Pane Management</td></tr>
+          <tr>
+            <td>Split right</td>
+            <td><kbd>&#8984;</kbd>+<kbd>&rarr;</kbd></td>
+            <td><kbd>Ctrl</kbd>+<kbd>&rarr;</kbd></td>
+            <td><span class="desktop-only">Desktop only</span></td>
+          </tr>
+          <tr>
+            <td>Split down</td>
+            <td><kbd>&#8984;</kbd>+<kbd>&darr;</kbd></td>
+            <td><kbd>Ctrl</kbd>+<kbd>&darr;</kbd></td>
+            <td><span class="desktop-only">Desktop only</span></td>
+          </tr>
+          <tr>
+            <td>Close pane</td>
+            <td><kbd>&#8984;</kbd>+<kbd>W</kbd></td>
+            <td><kbd>Ctrl</kbd>+<kbd>W</kbd></td>
+            <td><span class="desktop-only">Desktop only</span></td>
+          </tr>
+
+          <!-- Search & Appearance -->
+          <tr class="cat-row"><td colspan="4">Search &amp; Appearance</td></tr>
+          <tr><td>Search in pane</td><td><kbd>&#8984;</kbd>+<kbd>F</kbd></td><td><kbd>Ctrl</kbd>+<kbd>F</kbd></td><td>Yes</td></tr>
+          <tr><td>Toggle hidden files</td><td><kbd>&#8984;</kbd>+<kbd>.</kbd></td><td><kbd>Ctrl</kbd>+<kbd>.</kbd></td><td>Yes</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- Ad Slot: Mid-Content -->
+  <div class="ad-slot">
+    <div class="ad-slot-inner">
+      <!-- AD: Insert ad script here (e.g. Google AdSense in-article, responsive) -->
+      Ad Space
+    </div>
+  </div>
+
+  <!-- Features -->
+  <section>
+    <h2>Features</h2>
+    <div class="features-grid">
+      <div class="feature-card">
+        <div class="icon">&#x25A3;</div>
+        <h3>Multi-Pane Browsing</h3>
+        <p>Split right or down to view multiple directories at once. Unlimited panes with Premium.</p>
+      </div>
+      <div class="feature-card">
+        <div class="icon">&#x2B0D;</div>
+        <h3>Drag &amp; Drop</h3>
+        <p>Move files between panes with drag &amp; drop. Hold Alt to copy instead of move.</p>
+      </div>
+      <div class="feature-card">
+        <div class="icon">&#x1F3A8;</div>
+        <h3>4 Themes</h3>
+        <p>Dark, Light, Retro 3.1, and TUI. Switch instantly with the theme button.</p>
+      </div>
+      <div class="feature-card">
+        <div class="icon">&#x2328;</div>
+        <h3>Keyboard-Driven</h3>
+        <p>Full keyboard navigation &mdash; arrows, tab, enter, delete, and modifier shortcuts.</p>
+      </div>
+      <div class="feature-card">
+        <div class="icon">&#x1F50D;</div>
+        <h3>Search &amp; Filter</h3>
+        <p>Per-pane real-time search with Cmd+F. Case-insensitive name matching.</p>
+      </div>
+      <div class="feature-card">
+        <div class="icon">&#x1F4C2;</div>
+        <h3>Breadcrumb Navigation</h3>
+        <p>Clickable path bar lets you jump to any parent directory instantly.</p>
+      </div>
+      <div class="feature-card">
+        <div class="icon">&#x21C5;</div>
+        <h3>Sortable Columns</h3>
+        <p>Click column headers to sort by name, extension, size, or date. Persisted per pane.</p>
+      </div>
+      <div class="feature-card">
+        <div class="icon">&#x25B6;</div>
+        <h3>Inline Folder Expansion</h3>
+        <p>Expand folders in-place for a tree view without leaving the current directory.</p>
+      </div>
+      <div class="feature-card">
+        <div class="icon">&#x22EE;</div>
+        <h3>Context Menu</h3>
+        <p>Right-click for open, rename, delete, copy path, and more.</p>
+      </div>
+      <div class="feature-card">
+        <div class="icon">&#x1F441;</div>
+        <h3>Hidden Files Toggle</h3>
+        <p>Show or hide dotfiles with Cmd+. across all panes.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Ad Slot: Bottom -->
+  <div class="ad-slot" style="padding-bottom: 1rem;">
+    <div class="ad-slot-inner">
+      <!-- AD: Insert ad script here (e.g. Google AdSense bottom banner, responsive) -->
+      Ad Space
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <footer>
+    <p>
+      <a href="https://github.com/Ivapo/PanEx">GitHub</a>
+      &nbsp;&middot;&nbsp; v0.1.0
+      &nbsp;&middot;&nbsp; &copy; 2026 PanEx
+    </p>
+  </footer>
+
+</body>
+</html>
