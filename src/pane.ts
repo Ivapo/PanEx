@@ -362,6 +362,14 @@ export function renderPane(
     const name = document.createElement("span");
     name.className = "entry-name";
     name.textContent = entry.name;
+    if (entry.is_dir) {
+      name.style.cursor = "pointer";
+      name.addEventListener("click", (e) => {
+        e.stopPropagation();
+        callbacks.onSelect(entry, { shift: e.shiftKey, metaOrCtrl: e.metaKey || e.ctrlKey });
+        callbacks.onToggleExpand(entry);
+      });
+    }
 
     const size = document.createElement("span");
     size.className = "entry-size";
