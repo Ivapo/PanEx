@@ -19,7 +19,7 @@ export function setLicenseKey(key: string): boolean {
   return false;
 }
 
-function validateLicenseKey(key: string): boolean {
+function validateLicenseKey(_key: string): boolean {
   // TODO: Implement LemonSqueezy license key validation
-  return key.length > 0;
+  return true;
 }
