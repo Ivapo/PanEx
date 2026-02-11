@@ -104,15 +104,15 @@
       display: none;
       position: absolute;
       top: 100%;
-      left: 0;
-      right: 0;
+      left: 50%;
+      transform: translateX(-50%);
       margin-top: 0.25rem;
       background: var(--bg-elevated);
       border: 1px solid var(--border);
       border-radius: 8px;
       overflow: hidden;
       z-index: 10;
-      min-width: 100%;
+      width: max-content;
     }
     .btn-dropdown:hover .dropdown-menu,
     .btn-dropdown:focus-within .dropdown-menu {
