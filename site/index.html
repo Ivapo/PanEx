@@ -96,6 +96,41 @@
     .btn-green { background: var(--green); color: #000; font-weight: 600; }
     .btn-green:hover { background: #16a34a; }
 
+    /* Dropdown button */
+    .btn-dropdown {
+      position: relative;
+    }
+    .btn-dropdown .dropdown-menu {
+      display: none;
+      position: absolute;
+      top: 100%;
+      left: 0;
+      right: 0;
+      margin-top: 0.25rem;
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+      z-index: 10;
+      min-width: 100%;
+    }
+    .btn-dropdown:hover .dropdown-menu,
+    .btn-dropdown:focus-within .dropdown-menu {
+      display: block;
+    }
+    .btn-dropdown .dropdown-menu a {
+      display: block;
+      padding: 0.5rem 1rem;
+      color: var(--text);
+      font-size: 0.85rem;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+    .btn-dropdown .dropdown-menu a:hover {
+      background: var(--border);
+      text-decoration: none;
+    }
+
     /* Section shared */
     section {
       max-width: var(--max-w);
@@ -223,15 +258,21 @@
     <p class="tagline">Browse your local directories side by side.</p>
 
     <div class="btn-row">
-      <a href="https://github.com/Ivapo/PanEx/releases/latest/download/PaneExplorer_0.1.0_aarch64.dmg" class="btn btn-primary">
-        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-        macOS
-      </a>
+      <div class="btn-dropdown">
+        <span class="btn btn-primary">
+          <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          macOS &#9662;
+        </span>
+        <div class="dropdown-menu">
+          <a href="https://github.com/Ivapo/PanEx/releases/latest/download/PaneExplorer_0.1.0_aarch64.dmg">Apple Silicon (M1/M2/M3)</a>
+          <a href="https://github.com/Ivapo/PanEx/releases/latest/download/PaneExplorer_0.1.0_x64.dmg">Intel</a>
+        </div>
+      </div>
       <a href="https://github.com/Ivapo/PanEx/releases/latest/download/PaneExplorer_0.1.0_x64-setup.exe" class="btn btn-primary">
         <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
         Windows
       </a>
-      <a href="https://github.com/Ivapo/PanEx/releases/latest/download/pane-explorer_0.1.0_amd64.AppImage" class="btn btn-primary">
+      <a href="https://github.com/Ivapo/PanEx/releases/latest/download/PaneExplorer_0.1.0_amd64.AppImage" class="btn btn-primary">
         <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
         Linux
       </a>
@@ -384,7 +425,7 @@
   <footer>
     <p>
       <a href="https://github.com/Ivapo/PanEx">GitHub</a>
-      &nbsp;&middot;&nbsp; v0.1.0
+      &nbsp;&middot;&nbsp; v0.1.1
       &nbsp;&middot;&nbsp; &copy; 2026 PanEx
     </p>
   </footer>
