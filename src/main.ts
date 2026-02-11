@@ -561,9 +561,13 @@ function showFolderPicker() {
     }
   });
 
-  const note = document.createElement("p");
+  const note = document.createElement("div");
   note.className = "landing-note";
-  note.textContent = "Requires Chrome or Edge. Files never leave your device.";
+  note.innerHTML =
+    "Requires Chrome or Edge.<br><br>" +
+    "<strong>Important!</strong><br>" +
+    "- You WILL be altering your local files in the demo<br>" +
+    "- Your files NEVER leave your device.";
 
   landing.appendChild(title);
   landing.appendChild(themeRow);
