@@ -872,7 +872,14 @@ body {
   border-bottom-color: #e8a0b5;
 }
 
-[data-theme="light"] .theme-btn,
+[data-theme="light"] .theme-btn {
+  background: none;
+  border: none;
+  font-size: 16px;
+  -webkit-text-stroke: 0;
+  text-shadow: none;
+}
+
 [data-theme="light"] .landing-theme {
   background: linear-gradient(90deg, #e40303, #ff8c00, #ffed00, #008026, #004dff, #750787);
   color: #fff;

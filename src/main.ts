@@ -25,7 +25,7 @@ function nextPaneId(): string {
 
 const THEME_LABELS: Record<string, string> = {
   dark: "Dark",
-  light: "Gay",
+  light: "\u{1F308}",
   "3.1": "3.1",
   tui: "TUI",
 };
