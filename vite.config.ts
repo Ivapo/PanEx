@@ -6,9 +6,7 @@ export default defineConfig(({ mode }) => {
   return {
     root: "src",
     base: isWeb ? "/PanEx/demo/" : "/",
-    define: {
-      __DISABLE_PAYWALL__: JSON.stringify(!!process.env.DISABLE_PAYWALL),
-    },
+    define: {},
     build: {
       outDir: isWeb ? "../dist-web" : "../dist",
       emptyOutDir: true,

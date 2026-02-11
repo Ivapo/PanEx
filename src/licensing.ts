@@ -1,12 +1,9 @@
-declare const __DISABLE_PAYWALL__: boolean;
-
 const SUPPORT_PROMPT_DISMISSED = "paneexplorer_support_dismissed";
-export const MAX_FREE_PANES = 3;
+const SUPPORT_PANE_THRESHOLD = 3;
 
 export function shouldShowSupportPrompt(currentPaneCount: number): boolean {
-  if (__DISABLE_PAYWALL__) return false;
   if (localStorage.getItem(SUPPORT_PROMPT_DISMISSED)) return false;
-  return currentPaneCount >= MAX_FREE_PANES;
+  return currentPaneCount >= SUPPORT_PANE_THRESHOLD;
 }
 
 export function dismissSupportPrompt(): void {

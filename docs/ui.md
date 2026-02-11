@@ -68,8 +68,6 @@ The new pane opens to the same directory as the pane it was split from. Splits c
 
 **Directory sync**: File operations (move, copy, rename, delete) refresh all panes showing the affected directories, not just the pane where the action originated.
 
-**Premium gate**: Free version allows up to 3 panes. Attempting to split beyond that prompts for a license key.
-
 **Data model**: `LayoutNode = LayoutLeaf { paneId } | LayoutSplit { direction, first, second, ratio }`. Pane state is stored in a `Map<string, PaneState>` keyed by pane ID. Tree operations (`splitPane`, `removePane`, `countLeaves`) are pure functions in `layout.ts`.
 
 ### Pane Navigation

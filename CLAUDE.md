@@ -4,7 +4,7 @@ A lightweight, multi-pane file explorer built with Tauri v2 + Rust + TypeScript.
 
 ## What This Is
 
-A desktop file explorer that lets users view multiple directories side by side. Free version supports 2 panes. Premium ($4.99 one-time via LemonSqueezy) unlocks 3+ panes.
+A desktop file explorer that lets users view multiple directories side by side with unlimited panes.
 
 ## Tech Stack
 
@@ -12,7 +12,6 @@ A desktop file explorer that lets users view multiple directories side by side. 
 - **Frontend:** TypeScript + HTML/CSS (no framework)
 - **Package managers:** Cargo (Rust), Bun (frontend)
 - **Target platforms:** macOS first, then Windows and Linux
-- **License key validation:** local check, no server required
 
 ## Architecture
 
@@ -41,7 +40,7 @@ pane-explorer/
 │   ├── layout.ts        # Layout tree operations (split, remove, collect)
 │   ├── theme.ts         # Theme cycling and persistence
 │   ├── context-menu.ts  # Right-click context menu
-│   └── licensing.ts     # Premium license check
+│   └── licensing.ts     # Ko-fi support prompt logic
 ├── package.json
 ├── CLAUDE.md
 └── README.md
@@ -54,7 +53,7 @@ pane-explorer/
 3. Split layout — two panes side by side, resizable divider
 4. Basic file operations: open (default app), rename, delete (move to trash)
 5. Drag and drop files between panes (copy/move)
-6. Premium gate: "Add Pane" button checks for license key, prompts purchase if free tier
+6. Ko-fi support prompt shown once when splitting past 3 panes (non-blocking)
 
 ## Post-MVP Features
 
@@ -67,11 +66,6 @@ pane-explorer/
 - ~~Sort by name/size/date~~ *(done — clickable column headers: Name, Extension, Size, Date Modified; persisted in localStorage)*
 - Show/hide hidden files toggle
 - ~~File size display for directories~~ *(done — on-demand via right-click context menu, async with in-memory cache)*
-
-## Premium Boundary
-
-- **Free:** up to 2 panes
-- **Premium ($4.99):** unlimited panes, unlocked via license key stored locally
 
 ## Conventions
 
