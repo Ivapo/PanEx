@@ -68,6 +68,16 @@ A lightweight, multi-pane file explorer built with Tauri v2, Rust, and TypeScrip
 - **Bundler:** Vite
 - **Package manager:** Bun
 
+## macOS: "App is damaged" fix
+
+macOS quarantines apps downloaded from the internet that aren't code-signed. To fix this, open Terminal and run:
+
+```bash
+xattr -cr /Applications/PaneExplorer.app
+```
+
+If you dragged it somewhere else, replace the path accordingly. Then open the app normally.
+
 ## Getting Started
 
 ```bash
