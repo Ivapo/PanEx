@@ -782,33 +782,6 @@ body {
   color: var(--danger);
 }
 
-/* License Input */
-.license-input {
-  width: 100%;
-  background: var(--bg-primary);
-  color: var(--text-primary);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius);
-  padding: 8px 12px;
-  font: inherit;
-  outline: none;
-  margin-bottom: var(--spacing-lg);
-}
-
-.license-input:focus {
-  border-color: var(--accent);
-}
-
-.license-input.input-error {
-  border-color: var(--danger);
-  animation: shake 0.3s ease-in-out;
-}
-
-@keyframes shake {
-  0%, 100% { transform: translateX(0); }
-  25% { transform: translateX(-4px); }
-  75% { transform: translateX(4px); }
-}
 
 [data-theme="light"] .entry-icon {
   font-size: 0;
@@ -1289,11 +1262,6 @@ body {
   background: var(--accent);
 }
 
-/* License input */
-[data-theme="3.1"] .license-input {
-  border: 1px solid var(--accent);
-}
-
 /* Rename input */
 [data-theme="3.1"] .rename-input {
   background: var(--bg-primary);
@@ -1740,14 +1708,6 @@ body {
 [data-theme="tui"] .rename-input {
   background: var(--bg-primary);
   border: 1px solid var(--accent);
-}
-
-[data-theme="tui"] .license-input {
-  border: 1px solid var(--border-color);
-}
-
-[data-theme="tui"] .license-input:focus {
-  border-color: var(--accent);
 }
 
 /* Drag ghost */

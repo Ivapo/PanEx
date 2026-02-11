@@ -2,7 +2,7 @@ import { fs, isBrowser } from "./fs.ts";
 import type { FileEntry, PaneState, LayoutNode, LayoutSplit, SplitDirection, SortField, SortDirection } from "./types.ts";
 import { createPane, loadDirectory, navigateInto, navigateUp, renderPane, buildDisplayList } from "./pane.ts";
 import { countLeaves, splitPane, removePane, collectLeafIds } from "./layout.ts";
-import { canAddPane, setLicenseKey } from "./licensing.ts";
+import { shouldShowSupportPrompt, dismissSupportPrompt } from "./licensing.ts";
 import { initTheme, cycleTheme, getTheme } from "./theme.ts";
 
 let layoutRoot: LayoutNode;
@@ -792,9 +792,8 @@ function createDivider(
 
 async function handleSplitPane(paneId: string, direction: SplitDirection) {
   const totalPanes = countLeaves(layoutRoot);
-  if (!canAddPane(totalPanes)) {
-    const activated = await showLicensePrompt();
-    if (!activated) return;
+  if (shouldShowSupportPrompt(totalPanes)) {
+    showSupportPrompt();
   }
 
   const sourcePane = paneMap.get(paneId);
@@ -822,95 +821,64 @@ function handleClosePane(paneId: string) {
   renderLayout();
 }
 
-function showLicensePrompt(): Promise<boolean> {
-  return new Promise((resolve) => {
-    const overlay = document.createElement("div");
-    overlay.className = "dialog-overlay";
+function showSupportPrompt(): void {
+  const overlay = document.createElement("div");
+  overlay.className = "dialog-overlay";
 
-    const dialog = document.createElement("div");
-    dialog.className = "dialog";
+  const dialog = document.createElement("div");
+  dialog.className = "dialog";
 
-    const titleEl = document.createElement("div");
-    titleEl.className = "dialog-title";
-    titleEl.textContent = "Unlock Unlimited Panes";
+  const titleEl = document.createElement("div");
+  titleEl.className = "dialog-title";
+  titleEl.textContent = "Enjoying PanEx?";
 
-    const messageEl = document.createElement("div");
-    messageEl.className = "dialog-message";
-    messageEl.textContent =
-      "Enter a license key to unlock unlimited panes, or just install from source.";
+  const messageEl = document.createElement("div");
+  messageEl.className = "dialog-message";
+  messageEl.textContent =
+    "PanEx is free and open source. If you find it useful, consider supporting development on Ko-fi!";
 
-    const input = document.createElement("input");
-    input.type = "text";
-    input.className = "license-input";
-    input.placeholder = "Enter license key\u2026";
+  const actions = document.createElement("div");
+  actions.className = "dialog-actions";
 
-    const actions = document.createElement("div");
-    actions.className = "dialog-actions";
+  const dismissBtn = document.createElement("button");
+  dismissBtn.className = "dialog-btn";
+  dismissBtn.textContent = "Maybe Later";
 
-    const cancelBtn = document.createElement("button");
-    cancelBtn.className = "dialog-btn";
-    cancelBtn.textContent = "Cancel";
+  const kofiBtn = document.createElement("button");
+  kofiBtn.className = "dialog-btn dialog-btn-primary";
+  kofiBtn.textContent = "Support on Ko-fi";
 
-    const buyBtn = document.createElement("button");
-    buyBtn.className = "dialog-btn";
-    buyBtn.textContent = "Buy License ($4.99)";
+  actions.appendChild(dismissBtn);
+  actions.appendChild(kofiBtn);
 
-    const activateBtn = document.createElement("button");
-    activateBtn.className = "dialog-btn dialog-btn-primary";
-    activateBtn.textContent = "Activate";
+  dialog.appendChild(titleEl);
+  dialog.appendChild(messageEl);
+  dialog.appendChild(actions);
+  overlay.appendChild(dialog);
+  document.body.appendChild(overlay);
+  makeDialogDraggable(dialog, titleEl);
 
-    actions.appendChild(cancelBtn);
-    actions.appendChild(buyBtn);
-    actions.appendChild(activateBtn);
+  function cleanup() {
+    dismissSupportPrompt();
+    overlay.remove();
+    document.removeEventListener("keydown", onKeyDown);
+  }
 
-    dialog.appendChild(titleEl);
-    dialog.appendChild(messageEl);
-    dialog.appendChild(input);
-    dialog.appendChild(actions);
-    overlay.appendChild(dialog);
-    document.body.appendChild(overlay);
-    makeDialogDraggable(dialog, titleEl);
+  function onKeyDown(e: KeyboardEvent) {
+    if (e.key === "Escape") cleanup();
+  }
 
-    input.focus();
+  dismissBtn.addEventListener("click", cleanup);
 
-    function cleanup(result: boolean) {
-      overlay.remove();
-      document.removeEventListener("keydown", onKeyDown);
-      resolve(result);
-    }
-
-    function onKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") cleanup(false);
-    }
-
-    cancelBtn.addEventListener("click", () => cleanup(false));
-
-    buyBtn.addEventListener("click", () => {
-      window.open("https://paneexplorer.lemonsqueezy.com", "_blank");
-    });
-
-    activateBtn.addEventListener("click", () => {
-      const key = input.value.trim();
-      if (key && setLicenseKey(key)) {
-        cleanup(true);
-      } else {
-        input.classList.add("input-error");
-        setTimeout(() => input.classList.remove("input-error"), 600);
-      }
-    });
-
-    input.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") {
-        e.preventDefault();
-        activateBtn.click();
-      }
-    });
-
-    overlay.addEventListener("click", (e) => {
-      if (e.target === overlay) cleanup(false);
-    });
-    document.addEventListener("keydown", onKeyDown);
+  kofiBtn.addEventListener("click", () => {
+    window.open("https://ko-fi.com/ivapo", "_blank");
+    cleanup();
   });
+
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) cleanup();
+  });
+  document.addEventListener("keydown", onKeyDown);
 }
 
 function handleSelect(
