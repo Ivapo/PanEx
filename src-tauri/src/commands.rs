@@ -31,8 +31,8 @@ pub fn rename_entry(path: String, new_name: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn delete_entry(path: String) -> Result<(), String> {
-    fs_ops::delete_entry(&path)
+pub fn delete_entry(path: String, permanent: Option<bool>) -> Result<(), String> {
+    fs_ops::delete_entry(&path, permanent.unwrap_or(false))
 }
 
 #[tauri::command]
@@ -48,4 +48,19 @@ pub fn move_entry(source: String, dest_dir: String) -> Result<String, String> {
 #[tauri::command]
 pub fn calculate_dir_size(path: String) -> Result<u64, String> {
     fs_ops::calculate_directory_size(&path)
+}
+
+#[tauri::command]
+pub fn create_file(dir: String, name: String) -> Result<(), String> {
+    fs_ops::create_file(&dir, &name)
+}
+
+#[tauri::command]
+pub fn create_folder(dir: String, name: String) -> Result<(), String> {
+    fs_ops::create_folder(&dir, &name)
+}
+
+#[tauri::command]
+pub fn open_in_terminal(path: String) -> Result<(), String> {
+    fs_ops::open_in_terminal(&path)
 }

@@ -696,6 +696,11 @@ function renderNode(node: LayoutNode, totalPanes: number): HTMLElement {
       getDirSize: (path: string) => dirSizeCache.get(path) ?? null,
       onGetDirSize: (entry) => computeDirSize(entry.path),
 
+      onCreateFile: () => handleCreateFile(paneId),
+      onCreateFolder: () => handleCreateFolder(paneId),
+      onOpenInTerminal: () => handleOpenInTerminal(paneId),
+      onDropOnFolder: (entries: FileEntry[], targetFolderPath: string, sourcePaneId: string, isCopy: boolean) =>
+        handleDropOnFolder(paneId, entries, targetFolderPath, sourcePaneId, isCopy),
       onSearchChange: (query: string) => handleSearchChange(paneId, query),
       onSearchExit: () => {
         const p = paneMap.get(paneId);
@@ -1082,12 +1087,25 @@ async function handleDelete(paneId: string, entry: FileEntry) {
 
   try {
     await fs.deleteEntry(entry.path);
-    const pane = paneMap.get(paneId);
-    if (pane) {
-      await refreshPanesShowingPaths(pane.currentPath);
+  } catch {
+    // Trash failed (e.g. iCloud), offer permanent delete
+    const permConfirmed = await showConfirmDialog(
+      `Trash failed for "${entry.name}"`,
+      "Would you like to permanently delete it instead? This cannot be undone.",
+      "Delete Permanently"
+    );
+    if (!permConfirmed) return;
+    try {
+      await fs.deleteEntry(entry.path, true);
+    } catch (e2) {
+      alert(`Delete failed: ${e2}`);
+      return;
     }
-  } catch (e) {
-    alert(`Delete failed: ${e}`);
+  }
+
+  const pane = paneMap.get(paneId);
+  if (pane) {
+    await refreshPanesShowingPaths(pane.currentPath);
   }
 }
 
@@ -1145,11 +1163,27 @@ async function handleDeleteMultiple(paneId: string, entries: FileEntry[]) {
   );
   if (!confirmed) return;
 
+  let trashFailed = false;
   for (const entry of entries) {
     try {
-      await fs.deleteEntry(entry.path);
-    } catch (e) {
-      alert(`Failed to delete "${entry.name}": ${e}`);
+      await fs.deleteEntry(entry.path, trashFailed);
+    } catch {
+      if (!trashFailed) {
+        const permConfirmed = await showConfirmDialog(
+          `Trash failed for "${entry.name}"`,
+          "Would you like to permanently delete the remaining items instead? This cannot be undone.",
+          "Delete Permanently"
+        );
+        if (!permConfirmed) return;
+        trashFailed = true;
+        try {
+          await fs.deleteEntry(entry.path, true);
+        } catch (e2) {
+          alert(`Failed to delete "${entry.name}": ${e2}`);
+        }
+        continue;
+      }
+      alert(`Failed to delete "${entry.name}"`);
     }
   }
 
@@ -1157,6 +1191,126 @@ async function handleDeleteMultiple(paneId: string, entries: FileEntry[]) {
   if (pane) {
     await refreshPanesShowingPaths(pane.currentPath);
   }
+}
+
+function selectEntryByName(paneId: string, name: string) {
+  const pane = paneMap.get(paneId);
+  if (!pane) return;
+  const dl = getDisplayList(pane);
+  const idx = dl.findIndex((d) => d.entry.name === name);
+  if (idx === -1) return;
+  const entry = dl[idx]!.entry;
+  activePaneId = paneId;
+  paneMap.set(paneId, {
+    ...pane,
+    focusIndex: idx,
+    selectedPaths: new Set([entry.path]),
+    lastClickedPath: entry.path,
+  });
+  updateSelectionDOM();
+  updateFocusCursorDOM();
+  updateActivePaneDOM();
+  scrollFocusedRowIntoView();
+}
+
+async function handleCreateFile(paneId: string) {
+  const pane = paneMap.get(paneId);
+  if (!pane) return;
+  const name = await showPromptDialog("New File", "Enter file name:", "untitled.md");
+  if (!name) return;
+  try {
+    await fs.createFile(pane.currentPath, name);
+    await refreshPanesShowingPaths(pane.currentPath);
+    selectEntryByName(paneId, name);
+  } catch (e) {
+    alert(`Failed to create file: ${e}`);
+  }
+}
+
+async function handleCreateFolder(paneId: string) {
+  const pane = paneMap.get(paneId);
+  if (!pane) return;
+  const name = await showPromptDialog("New Folder", "Enter folder name:", "New Folder");
+  if (!name) return;
+  try {
+    await fs.createFolder(pane.currentPath, name);
+    await refreshPanesShowingPaths(pane.currentPath);
+    selectEntryByName(paneId, name);
+  } catch (e) {
+    alert(`Failed to create folder: ${e}`);
+  }
+}
+
+async function handleOpenInTerminal(paneId: string) {
+  const pane = paneMap.get(paneId);
+  if (!pane) return;
+  try {
+    await fs.openInTerminal(pane.currentPath);
+  } catch (e) {
+    alert(`Failed to open terminal: ${e}`);
+  }
+}
+
+async function handleDropOnFolder(
+  paneId: string,
+  entries: FileEntry[],
+  targetFolderPath: string,
+  sourcePaneId: string,
+  isCopy: boolean
+) {
+  const pane = paneMap.get(paneId);
+  if (!pane) return;
+
+  // Prevent dropping a folder onto itself or into a descendant
+  for (const entry of entries) {
+    if (entry.path === targetFolderPath) return;
+    if (targetFolderPath.startsWith(entry.path + "/")) return;
+  }
+
+  for (const entry of entries) {
+    try {
+      if (isCopy) {
+        await fs.copyEntry(entry.path, targetFolderPath);
+      } else {
+        await fs.moveEntry(entry.path, targetFolderPath);
+      }
+    } catch (e) {
+      alert(`Operation failed: ${e}`);
+    }
+  }
+
+  // Refresh panes, then re-read any expanded folders that were affected
+  const sourcePane = paneMap.get(sourcePaneId);
+  await refreshPanesShowingPaths(
+    pane.currentPath,
+    sourcePane?.currentPath ?? ""
+  );
+
+  // Refresh expanded children cache for target folder and source folder
+  for (const [id, p] of paneMap) {
+    if (!p.expandedPaths.size) continue;
+    let changed = false;
+    const newCache = new Map(p.childrenCache);
+    for (const expandedPath of p.expandedPaths) {
+      // Refresh if the target folder or any source entry's parent is expanded
+      const sourceParents = entries.map((ent) => ent.path.substring(0, ent.path.lastIndexOf("/")));
+      if (expandedPath === targetFolderPath || sourceParents.includes(expandedPath)) {
+        let children = await fs.readDir(expandedPath);
+        if (!showHidden) children = children.filter((e) => !e.name.startsWith("."));
+        if (p.searchQuery) {
+          const q = p.searchQuery.toLowerCase();
+          children = children.filter((e) => e.name.toLowerCase().includes(q));
+        }
+        children = sortEntries(children, sortField, sortDirection);
+        newCache.set(expandedPath, children);
+        changed = true;
+      }
+    }
+    if (changed) {
+      paneMap.set(id, { ...paneMap.get(id)!, childrenCache: newCache });
+    }
+  }
+  renderLayout();
 }
 
 async function handleDrop(
@@ -1298,6 +1452,95 @@ function makeDialogDraggable(dialog: HTMLElement, handle: HTMLElement) {
     handle.style.cursor = "grabbing";
     document.addEventListener("mousemove", onMouseMove);
     document.addEventListener("mouseup", onMouseUp);
+  });
+}
+
+function showPromptDialog(title: string, message: string, defaultValue: string): Promise<string | null> {
+  return new Promise((resolve) => {
+    const overlay = document.createElement("div");
+    overlay.className = "dialog-overlay";
+
+    const dialog = document.createElement("div");
+    dialog.className = "dialog";
+
+    const titleEl = document.createElement("div");
+    titleEl.className = "dialog-title";
+    titleEl.textContent = title;
+
+    const messageEl = document.createElement("div");
+    messageEl.className = "dialog-message";
+    messageEl.textContent = message;
+
+    const input = document.createElement("input");
+    input.type = "text";
+    input.className = "rename-input";
+    input.value = defaultValue;
+    input.style.width = "100%";
+    input.style.marginTop = "8px";
+    input.style.boxSizing = "border-box";
+
+    const actions = document.createElement("div");
+    actions.className = "dialog-actions";
+
+    const cancelBtn = document.createElement("button");
+    cancelBtn.className = "dialog-btn";
+    cancelBtn.textContent = "Cancel";
+
+    const createBtn = document.createElement("button");
+    createBtn.className = "dialog-btn dialog-btn-primary";
+    createBtn.textContent = "Create";
+
+    actions.appendChild(cancelBtn);
+    actions.appendChild(createBtn);
+
+    dialog.appendChild(titleEl);
+    dialog.appendChild(messageEl);
+    dialog.appendChild(input);
+    dialog.appendChild(actions);
+    overlay.appendChild(dialog);
+    document.body.appendChild(overlay);
+    makeDialogDraggable(dialog, titleEl);
+
+    input.focus();
+    // Select name without extension
+    const dotIndex = defaultValue.lastIndexOf(".");
+    if (dotIndex > 0) {
+      input.setSelectionRange(0, dotIndex);
+    } else {
+      input.select();
+    }
+
+    function cleanup(result: string | null) {
+      overlay.remove();
+      document.removeEventListener("keydown", onKeyDown);
+      resolve(result);
+    }
+
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") cleanup(null);
+    }
+
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        const val = input.value.trim();
+        cleanup(val || null);
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        cleanup(null);
+      }
+    });
+
+    cancelBtn.addEventListener("click", () => cleanup(null));
+    createBtn.addEventListener("click", () => {
+      const val = input.value.trim();
+      cleanup(val || null);
+    });
+    overlay.addEventListener("click", (e) => {
+      if (e.target === overlay) cleanup(null);
+    });
+    document.addEventListener("keydown", onKeyDown);
   });
 }
 

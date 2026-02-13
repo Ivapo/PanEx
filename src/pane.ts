@@ -62,6 +62,10 @@ export interface PaneCallbacks {
   onSearchChange: (query: string) => void;
   onSearchExit?: () => void;
   searchQuery: string;
+  onCreateFile?: () => void;
+  onCreateFolder?: () => void;
+  onOpenInTerminal?: () => void;
+  onDropOnFolder?: (entries: FileEntry[], targetFolderPath: string, sourcePaneId: string, isCopy: boolean) => void;
 }
 
 export function renderPane(
@@ -262,8 +266,10 @@ export function renderPane(
   const list = document.createElement("div");
   list.className = "pane-list";
 
-  // Drop zone handlers on pane-list
+  // Drop zone handlers on pane-list (background area)
   list.addEventListener("dragover", (e) => {
+    // Don't show list highlight if hovering over a folder row (it has its own handler)
+    if ((e.target as HTMLElement).closest(".pane-row.is-dir")) return;
     e.preventDefault();
     if (e.dataTransfer) {
       e.dataTransfer.dropEffect = e.altKey ? "copy" : "move";
@@ -272,7 +278,6 @@ export function renderPane(
   });
 
   list.addEventListener("dragleave", (e) => {
-    // Only remove if leaving the list itself (not entering a child)
     if (e.relatedTarget && list.contains(e.relatedTarget as Node)) return;
     list.classList.remove("drop-target");
   });
@@ -281,14 +286,38 @@ export function renderPane(
     e.preventDefault();
     list.classList.remove("drop-target");
 
+    // Ignore if dropped on a folder row (handled by row's own drop handler)
+    if ((e.target as HTMLElement).closest(".pane-row.is-dir")) return;
+
     const json = e.dataTransfer?.getData("text/plain");
     if (!json) return;
 
     const data = JSON.parse(json) as { entries: FileEntry[]; sourcePaneId: string };
-    // Prevent drop onto the same pane
-    if (data.sourcePaneId === paneId) return;
+    if (data.sourcePaneId === paneId) {
+      // Same-pane: allow if entries are from a subdirectory (expanded folder)
+      const currentPath = pane.currentPath;
+      const fromSubdir = data.entries.some((ent) => {
+        const parentPath = ent.path.substring(0, ent.path.lastIndexOf("/"));
+        return parentPath !== currentPath;
+      });
+      if (!fromSubdir) return;
+      callbacks.onDropOnFolder?.(data.entries, currentPath, data.sourcePaneId, e.altKey);
+      return;
+    }
 
     callbacks.onDrop(data.entries, data.sourcePaneId, e.altKey);
+  });
+
+  // Empty-space context menu (right-click on list background, not on a row)
+  list.addEventListener("contextmenu", (e) => {
+    if ((e.target as HTMLElement).closest(".pane-row")) return;
+    e.preventDefault();
+    const items: import("./context-menu.ts").MenuItem[] = [
+      { label: "New File", action: () => callbacks.onCreateFile?.() },
+      { label: "New Folder", action: () => callbacks.onCreateFolder?.() },
+      { label: "Open in Terminal", action: () => callbacks.onOpenInTerminal?.(), divider: true },
+    ];
+    showContextMenu(e.clientX, e.clientY, items);
   });
 
   const displayList = buildDisplayList(
@@ -335,6 +364,41 @@ export function renderPane(
     row.addEventListener("dragend", () => {
       row.classList.remove("dragging");
     });
+
+    // Drop-on-folder handlers for directory rows
+    if (entry.is_dir && callbacks.onDropOnFolder) {
+      row.addEventListener("dragover", (e) => {
+        if (!e.dataTransfer?.types.includes("text/plain")) return;
+        // Don't allow dropping a row onto itself (the dragging row)
+        if (row.classList.contains("dragging")) return;
+        e.preventDefault();
+        e.stopPropagation();
+        e.dataTransfer.dropEffect = e.altKey ? "copy" : "move";
+        row.classList.add("drop-target");
+        list.classList.remove("drop-target");
+      });
+
+      row.addEventListener("dragleave", (e) => {
+        // Only remove if actually leaving the row (not entering a child element)
+        if (e.relatedTarget && row.contains(e.relatedTarget as Node)) return;
+        row.classList.remove("drop-target");
+      });
+
+      row.addEventListener("drop", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        row.classList.remove("drop-target");
+        list.classList.remove("drop-target");
+
+        const json = e.dataTransfer?.getData("text/plain");
+        if (!json) return;
+
+        const data = JSON.parse(json) as { entries: FileEntry[]; sourcePaneId: string };
+        // Prevent dropping a folder into itself
+        if (data.entries.some((ent) => ent.path === entry.path)) return;
+        callbacks.onDropOnFolder!(data.entries, entry.path, data.sourcePaneId, e.altKey);
+      });
+    }
 
     // Toggle arrow for directories
     const toggle = document.createElement("span");

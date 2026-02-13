@@ -66,6 +66,9 @@ pane-explorer/
 - ~~Sort by name/size/date~~ *(done — clickable column headers: Name, Extension, Size, Date Modified; persisted in localStorage)*
 - Show/hide hidden files toggle
 - ~~File size display for directories~~ *(done — on-demand via right-click context menu, async with in-memory cache)*
+- ~~Create new file/folder~~ *(done — right-click empty space in pane, custom dialog, auto-selects after creation)*
+- ~~Open in terminal~~ *(done — right-click empty space, auto-detects iTerm2 on macOS)*
+- ~~Same-pane drag to folder~~ *(done — drag files onto folder rows within same pane, drag from expanded subfolder to pane root)*
 
 ## Conventions
 

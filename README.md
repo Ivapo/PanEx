@@ -11,6 +11,9 @@ A lightweight, multi-pane file explorer built with Tauri v2, Rust, and TypeScrip
 - Full keyboard navigation with focus cursor
 - Copy, cut, paste files between panes
 - Multi-file drag and drop between panes (move or Option+drop to copy)
+- Drag files onto folders within the same pane
+- Create new files and folders via right-click context menu
+- Open current directory in terminal (auto-detects iTerm2 on macOS)
 - Sortable columns — click Name, Extension, Size, or Date Modified headers to sort (persists across sessions)
 - Show/hide hidden files toggle
 - Native performance — Rust handles all filesystem operations

@@ -102,13 +102,21 @@ pub fn open_entry(path: &str) -> Result<(), String> {
     Ok(())
 }
 
-pub fn delete_entry(path: &str) -> Result<(), String> {
+pub fn delete_entry(path: &str, permanent: bool) -> Result<(), String> {
     let target = PathBuf::from(path);
     if !target.exists() {
         return Err(format!("Path does not exist: {}", path));
     }
 
-    trash::delete(&target).map_err(|e| format!("Failed to move to trash: {}", e))
+    if permanent {
+        if target.is_dir() {
+            fs::remove_dir_all(&target).map_err(|e| format!("Failed to delete: {}", e))
+        } else {
+            fs::remove_file(&target).map_err(|e| format!("Failed to delete: {}", e))
+        }
+    } else {
+        trash::delete(&target).map_err(|e| format!("Failed to move to trash: {}", e))
+    }
 }
 
 pub fn copy_entry(source: &str, dest_dir: &str) -> Result<String, String> {
@@ -193,6 +201,81 @@ fn disk_size(meta: &fs::Metadata) -> u64 {
 #[cfg(not(unix))]
 fn disk_size(meta: &fs::Metadata) -> u64 {
     meta.len()
+}
+
+pub fn create_file(dir: &str, name: &str) -> Result<(), String> {
+    let path = Path::new(dir).join(name);
+    if path.exists() {
+        return Err(format!("A file named '{}' already exists", name));
+    }
+    fs::File::create(&path).map_err(|e| format!("Failed to create file: {}", e))?;
+    Ok(())
+}
+
+pub fn create_folder(dir: &str, name: &str) -> Result<(), String> {
+    let path = Path::new(dir).join(name);
+    if path.exists() {
+        return Err(format!("A folder named '{}' already exists", name));
+    }
+    fs::create_dir(&path).map_err(|e| format!("Failed to create folder: {}", e))?;
+    Ok(())
+}
+
+pub fn open_in_terminal(path: &str) -> Result<(), String> {
+    let dir = Path::new(path);
+    if !dir.is_dir() {
+        return Err(format!("Not a directory: {}", path));
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        // Prefer iTerm2 if installed, fall back to Terminal.app
+        let app = if Path::new("/Applications/iTerm.app").exists() {
+            "iTerm"
+        } else {
+            "Terminal"
+        };
+        std::process::Command::new("open")
+            .args(["-a", app, path])
+            .spawn()
+            .map_err(|e| format!("Failed to open terminal: {}", e))?;
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("cmd")
+            .args(["/C", "start", "cmd", "/K", &format!("cd /d {}", path)])
+            .spawn()
+            .map_err(|e| format!("Failed to open terminal: {}", e))?;
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        // Try common terminal emulators in order
+        let terminals = ["x-terminal-emulator", "gnome-terminal", "konsole", "xterm"];
+        let mut launched = false;
+        for term in &terminals {
+            let result = if *term == "gnome-terminal" {
+                std::process::Command::new(term)
+                    .arg("--working-directory")
+                    .arg(path)
+                    .spawn()
+            } else {
+                std::process::Command::new(term)
+                    .current_dir(path)
+                    .spawn()
+            };
+            if result.is_ok() {
+                launched = true;
+                break;
+            }
+        }
+        if !launched {
+            return Err("No supported terminal emulator found".to_string());
+        }
+    }
+
+    Ok(())
 }
 
 pub fn move_entry(source: &str, dest_dir: &str) -> Result<String, String> {

@@ -603,6 +603,12 @@ body {
   outline-offset: -2px;
 }
 
+.pane-row.drop-target {
+  background: rgba(137, 180, 250, 0.15);
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+
 .drag-ghost {
   position: absolute;
   top: -1000px;

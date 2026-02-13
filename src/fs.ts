@@ -6,10 +6,13 @@ export interface FsBackend {
   getParentDir(path: string): Promise<string>;
   openEntry(path: string): Promise<void>;
   renameEntry(path: string, newName: string): Promise<void>;
-  deleteEntry(path: string): Promise<void>;
+  deleteEntry(path: string, permanent?: boolean): Promise<void>;
   copyEntry(source: string, destDir: string): Promise<string>;
   moveEntry(source: string, destDir: string): Promise<string>;
   getDirSize(path: string): Promise<number>;
+  createFile(dir: string, name: string): Promise<void>;
+  createFolder(dir: string, name: string): Promise<void>;
+  openInTerminal(path: string): Promise<void>;
 }
 
 function createTauriFs(): FsBackend {
@@ -45,9 +48,9 @@ function createTauriFs(): FsBackend {
       const invoke = await getInvoke();
       await invoke("rename_entry", { path, newName });
     },
-    async deleteEntry(path: string): Promise<void> {
+    async deleteEntry(path: string, permanent?: boolean): Promise<void> {
       const invoke = await getInvoke();
-      await invoke("delete_entry", { path });
+      await invoke("delete_entry", { path, permanent: permanent ?? false });
     },
     async copyEntry(source: string, destDir: string): Promise<string> {
       const invoke = await getInvoke();
@@ -60,6 +63,18 @@ function createTauriFs(): FsBackend {
     async getDirSize(path: string): Promise<number> {
       const invoke = await getInvoke();
       return invoke<number>("calculate_dir_size", { path });
+    },
+    async createFile(dir: string, name: string): Promise<void> {
+      const invoke = await getInvoke();
+      await invoke("create_file", { dir, name });
+    },
+    async createFolder(dir: string, name: string): Promise<void> {
+      const invoke = await getInvoke();
+      await invoke("create_folder", { dir, name });
+    },
+    async openInTerminal(path: string): Promise<void> {
+      const invoke = await getInvoke();
+      await invoke("open_in_terminal", { path });
     },
   };
 }
@@ -243,7 +258,7 @@ function createBrowserFs(): FsBackend {
       }
     },
 
-    async deleteEntry(path: string): Promise<void> {
+    async deleteEntry(path: string, _permanent?: boolean): Promise<void> {
       const { parentPath, name } = splitPath(path);
       const parentHandle = await resolveDir(parentPath);
       await parentHandle.removeEntry(name, { recursive: true });
@@ -285,6 +300,20 @@ function createBrowserFs(): FsBackend {
       await this.copyEntry(source, destDir);
       await this.deleteEntry(source);
       return destPath;
+    },
+
+    async createFile(dir: string, name: string): Promise<void> {
+      const dirHandle = await resolveDir(dir);
+      await dirHandle.getFileHandle(name, { create: true });
+    },
+
+    async createFolder(dir: string, name: string): Promise<void> {
+      const dirHandle = await resolveDir(dir);
+      await dirHandle.getDirectoryHandle(name, { create: true });
+    },
+
+    async openInTerminal(_path: string): Promise<void> {
+      alert("Open in Terminal is not available in browser mode.");
     },
 
     async getDirSize(path: string): Promise<number> {
