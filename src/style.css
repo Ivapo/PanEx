@@ -377,6 +377,19 @@ body {
   min-width: 0;
 }
 
+.pane-path-input {
+  flex: 1;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  padding: 2px 8px;
+  font: inherit;
+  font-size: 12px;
+  outline: none;
+  min-width: 0;
+}
+
 .breadcrumb-sep {
   margin: 0 2px;
   color: var(--text-secondary);

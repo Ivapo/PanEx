@@ -89,6 +89,53 @@ export function renderPane(
   const pathDisplay = document.createElement("span");
   pathDisplay.className = "pane-path";
 
+  // Editable path input (hidden by default, shown on double-click)
+  const pathInput = document.createElement("input");
+  pathInput.type = "text";
+  pathInput.className = "pane-path-input";
+  pathInput.value = pane.currentPath;
+
+  function showPathInput() {
+    pathDisplay.style.display = "none";
+    pathInput.style.display = "";
+    pathInput.value = pane.currentPath;
+    pathInput.focus();
+    pathInput.select();
+  }
+
+  function hidePathInput() {
+    pathInput.style.display = "none";
+    pathDisplay.style.display = "";
+  }
+
+  pathInput.style.display = "none";
+
+  pathInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      e.stopPropagation();
+      const target = pathInput.value.trim();
+      if (target) {
+        callbacks.onNavigateTo(target);
+      }
+      pathInput.blur();
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      e.stopPropagation();
+      hidePathInput();
+      pathInput.blur();
+    }
+  });
+
+  pathInput.addEventListener("blur", () => {
+    hidePathInput();
+  });
+
+  pathDisplay.addEventListener("dblclick", (e) => {
+    e.preventDefault();
+    showPathInput();
+  });
+
   // Build clickable breadcrumb segments
   const parts = pane.currentPath.split("/").filter(Boolean);
   for (let i = 0; i < parts.length; i++) {
@@ -205,6 +252,7 @@ export function renderPane(
   header.appendChild(nav);
   header.appendChild(searchWrap);
   header.appendChild(pathDisplay);
+  header.appendChild(pathInput);
 
   const actions = document.createElement("div");
   actions.className = "pane-header-actions";
