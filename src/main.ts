@@ -417,6 +417,22 @@ function setupKeyboardShortcuts() {
       refilterAllPanes();
       return;
     }
+
+    // Type-ahead search: printable characters open search and start filtering
+    if (!mod && !e.altKey && !e.ctrlKey && e.key.length === 1 && activePaneId) {
+      const container = document.querySelector(`.pane[data-pane-id="${activePaneId}"]`);
+      if (!container) return;
+      const searchWrap = container.querySelector<HTMLElement>(".pane-search-wrap");
+      const searchInput = container.querySelector<HTMLInputElement>(".pane-search-input");
+      if (searchWrap && searchInput) {
+        searchWrap.style.display = "";
+        const pathEl = container.querySelector<HTMLElement>(".pane-path");
+        if (pathEl) pathEl.style.display = "none";
+        searchInput.focus();
+        // Don't prevent default — let the character flow into the now-focused input
+      }
+      return;
+    }
   });
 }
 
