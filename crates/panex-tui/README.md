@@ -2,6 +2,8 @@
 
 A terminal UI file explorer with multi-pane support, built with [ratatui](https://github.com/ratatui/ratatui). Part of the [PanEx](https://github.com/Ivapo/PanEx) project.
 
+**[Website](https://ivapo.github.io/PanEx/)**
+
 ## Install
 
 ```bash

@@ -2,6 +2,8 @@
 
 A lightweight, multi-pane file explorer built with Tauri v2, Rust, and TypeScript.
 
+**[Website](https://ivapo.github.io/PanEx/)**
+
 ## Features
 
 - Two side-by-side directory panes (split right/down for more)
