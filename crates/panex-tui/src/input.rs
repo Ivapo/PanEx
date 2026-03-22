@@ -109,17 +109,6 @@ fn handle_normal(app: &mut App, key: KeyEvent) {
             };
         }
 
-        // Type-ahead search: any printable char starts search
-        KeyCode::Char(c) if !ctrl && c.is_alphanumeric() => {
-            let pane_id = app.active_pane_id.clone();
-            if let Some(pane) = app.pane_map.get_mut(&pane_id) {
-                pane.search_query = c.to_string();
-            }
-            app.mode = AppMode::Search {
-                pane_id: pane_id.clone(),
-            };
-            app.refilter_pane(&pane_id);
-        }
 
         _ => {}
     }

@@ -23,7 +23,7 @@ cd ~/Projects && panex
 - Multi-pane layout — split vertically (`|`) or horizontally (`-`), close with `W`
 - Keyboard-driven navigation with vim-style keys (`j`/`k`) or arrow keys
 - File operations: copy (`y`), cut (`x`), paste (`p`), rename (`r`/`F2`), delete (`d`)
-- Type-ahead search and `/` filter mode
+- Search with `/` or `Ctrl+f`
 - Sortable columns — cycle field with `s`, toggle direction with `S`
 - Show/hide hidden files (`.`)
 - Editable path bar (`e`) with `~` expansion
