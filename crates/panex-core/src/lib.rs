@@ -12,6 +12,12 @@ pub struct FileEntry {
     pub modified: u64,
 }
 
+pub fn get_home_dir() -> Result<String, String> {
+    dirs::home_dir()
+        .map(|p| p.to_string_lossy().to_string())
+        .ok_or_else(|| "Could not determine home directory".to_string())
+}
+
 pub fn read_directory(path: &str) -> Result<Vec<FileEntry>, String> {
     let dir_path = Path::new(path);
     if !dir_path.is_dir() {

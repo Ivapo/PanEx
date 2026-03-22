@@ -1,0 +1,15 @@
+[package]
+name = "panex-core"
+version = "0.3.1"
+description = "Shared filesystem operations for PanEx"
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/Ivapo/PanEx"
+homepage = "https://github.com/Ivapo/PanEx"
+keywords = ["file-explorer", "file-manager", "tui"]
+categories = ["filesystem"]
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+trash = "5"
+dirs = "6"

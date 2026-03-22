@@ -1,0 +1,21 @@
+[package]
+name = "panex-tui"
+version = "0.1.0"
+description = "Terminal UI for PanEx file explorer"
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/Ivapo/PanEx"
+homepage = "https://github.com/Ivapo/PanEx"
+keywords = ["file-explorer", "file-manager", "tui", "terminal"]
+categories = ["command-line-utilities", "filesystem"]
+
+[[bin]]
+name = "panex"
+path = "src/main.rs"
+
+[dependencies]
+panex-core = { version = "0.3.1", path = "../panex-core" }
+ratatui = "0.29"
+crossterm = "0.28"
+dirs = "6"
+unicode-width = "0.2"
