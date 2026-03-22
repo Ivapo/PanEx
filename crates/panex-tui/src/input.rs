@@ -5,6 +5,10 @@ use crate::layout::{self, SplitDirection, collect_leaf_ids, count_leaves};
 use crate::sort::apply_sort_and_filter;
 
 pub fn handle_key_event(app: &mut App, key: KeyEvent) {
+    // Clear status message on any keypress
+    app.status_message = None;
+    app.status_message_at = None;
+
     match &app.mode {
         AppMode::Normal => handle_normal(app, key),
         AppMode::Search { .. } => handle_search(app, key),
@@ -106,6 +110,9 @@ fn handle_normal(app: &mut App, key: KeyEvent) {
                 pane_id,
                 input: path.clone(),
                 cursor: path.len(),
+                completions: Vec::new(),
+                completion_index: None,
+                completion_prefix: String::new(),
             };
         }
 
@@ -171,11 +178,11 @@ fn handle_rename(app: &mut App, key: KeyEvent) {
             if !input.is_empty() {
                 match panex_core::rename_entry(&path, &input) {
                     Ok(()) => {
-                        app.status_message = Some(format!("Renamed to {}", input));
+                        app.set_status(format!("Renamed to {}", input));
                         app.refresh_pane(&pane_id);
                     }
                     Err(e) => {
-                        app.status_message = Some(format!("Rename failed: {}", e));
+                        app.set_status(format!("Rename failed: {}", e));
                     }
                 }
             }
@@ -229,38 +236,53 @@ fn handle_rename(app: &mut App, key: KeyEvent) {
     }
 }
 
-fn handle_confirm(app: &mut App, key: KeyEvent) {
-    let action = if let AppMode::Confirm { action, .. } = &app.mode {
-        // We need to clone data out
-        match action {
-            ConfirmAction::Delete(paths) => ConfirmAction::Delete(paths.clone()),
+fn confirm_execute(app: &mut App, action: ConfirmAction) {
+    match action {
+        ConfirmAction::Delete(paths) => {
+            let mut errors = Vec::new();
+            for p in &paths {
+                if let Err(e) = panex_core::delete_entry(p, false) {
+                    errors.push(e);
+                }
+            }
+            if errors.is_empty() {
+                app.set_status(format!("Deleted {} item(s)", paths.len()));
+            } else {
+                app.set_status(format!("Delete errors: {}", errors.join(", ")));
+            }
+            // Refresh all panes
+            let pane_ids: Vec<String> = app.pane_map.keys().cloned().collect();
+            for pid in pane_ids {
+                app.refresh_pane(&pid);
+            }
         }
+    }
+}
+
+fn handle_confirm(app: &mut App, key: KeyEvent) {
+    let (action, selected) = if let AppMode::Confirm { action, selected, .. } = &app.mode {
+        let a = match action {
+            ConfirmAction::Delete(paths) => ConfirmAction::Delete(paths.clone()),
+        };
+        (a, *selected)
     } else {
         return;
     };
 
     match key.code {
-        KeyCode::Char('y') | KeyCode::Enter => {
-            match action {
-                ConfirmAction::Delete(paths) => {
-                    let mut errors = Vec::new();
-                    for p in &paths {
-                        if let Err(e) = panex_core::delete_entry(p, false) {
-                            errors.push(e);
-                        }
-                    }
-                    if errors.is_empty() {
-                        app.status_message =
-                            Some(format!("Deleted {} item(s)", paths.len()));
-                    } else {
-                        app.status_message = Some(format!("Delete errors: {}", errors.join(", ")));
-                    }
-                    // Refresh all panes
-                    let pane_ids: Vec<String> = app.pane_map.keys().cloned().collect();
-                    for pid in pane_ids {
-                        app.refresh_pane(&pid);
-                    }
-                }
+        KeyCode::Left | KeyCode::Right | KeyCode::Char('h') | KeyCode::Char('l') => {
+            // Toggle between Yes (0) and No (1)
+            if let AppMode::Confirm { selected, .. } = &mut app.mode {
+                *selected = if *selected == 0 { 1 } else { 0 };
+            }
+        }
+        KeyCode::Char('y') => {
+            confirm_execute(app, action);
+            app.mode = AppMode::Normal;
+        }
+        KeyCode::Enter => {
+            if selected == 0 {
+                confirm_execute(app, action);
             }
             app.mode = AppMode::Normal;
         }
@@ -300,12 +322,12 @@ fn handle_prompt(app: &mut App, key: KeyEvent) {
                 };
                 match result {
                     Ok(()) => {
-                        app.status_message = Some(format!("Created {}", input));
+                        app.set_status(format!("Created {}", input));
                         let pane_id = app.active_pane_id.clone();
                         app.refresh_pane(&pane_id);
                     }
                     Err(e) => {
-                        app.status_message = Some(format!("Create failed: {}", e));
+                        app.set_status(format!("Create failed: {}", e));
                     }
                 }
             }
@@ -359,18 +381,82 @@ fn handle_prompt(app: &mut App, key: KeyEvent) {
     }
 }
 
+fn path_edit_set(app: &mut App, pane_id: String, input: String, cursor: usize) {
+    app.mode = AppMode::PathEdit {
+        pane_id,
+        input,
+        cursor,
+        completions: Vec::new(),
+        completion_index: None,
+        completion_prefix: String::new(),
+    };
+}
+
+fn compute_completions(input: &str, home_path: &str) -> (String, Vec<String>) {
+    let expanded = if input.starts_with('~') {
+        input.replacen('~', home_path, 1)
+    } else {
+        input.to_string()
+    };
+    let path = std::path::Path::new(&expanded);
+
+    // Split into parent dir and the prefix being typed
+    let (dir, prefix) = if expanded.ends_with('/') {
+        (expanded.as_str().to_string(), String::new())
+    } else {
+        let parent = path.parent().map(|p| p.to_string_lossy().to_string()).unwrap_or_default();
+        let file_part = path.file_name().map(|f| f.to_string_lossy().to_string()).unwrap_or_default();
+        (parent, file_part)
+    };
+
+    let prefix_lower = prefix.to_lowercase();
+    let mut matches = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(&dir) {
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().to_string();
+            if name.to_lowercase().starts_with(&prefix_lower) {
+                let full = if dir.ends_with('/') {
+                    format!("{}{}", dir, name)
+                } else {
+                    format!("{}/{}", dir, name)
+                };
+                // Add trailing slash for directories
+                let full = if entry.path().is_dir() {
+                    format!("{}/", full)
+                } else {
+                    full
+                };
+                // Convert back to ~ if original used it
+                let full = if input.starts_with('~') {
+                    full.replacen(home_path, "~", 1)
+                } else {
+                    full
+                };
+                matches.push(full);
+            }
+        }
+    }
+    matches.sort_by(|a, b| a.to_lowercase().cmp(&b.to_lowercase()));
+    (prefix, matches)
+}
+
 fn handle_path_edit(app: &mut App, key: KeyEvent) {
-    let (pane_id, mut input, mut cursor) =
+    let (pane_id, mut input, mut cursor, completions, completion_index, completion_prefix) =
         if let AppMode::PathEdit {
             pane_id,
             input,
             cursor,
+            completions,
+            completion_index,
+            completion_prefix,
         } = &app.mode
         {
-            (pane_id.clone(), input.clone(), *cursor)
+            (pane_id.clone(), input.clone(), *cursor, completions.clone(), *completion_index, completion_prefix.clone())
         } else {
             return;
         };
+
+    let shift = key.modifiers.contains(KeyModifiers::SHIFT);
 
     match key.code {
         KeyCode::Esc => {
@@ -386,44 +472,83 @@ fn handle_path_edit(app: &mut App, key: KeyEvent) {
             app.mode = AppMode::Normal;
         }
         KeyCode::Backspace => {
-            if cursor > 0 {
+            // If cursor is at end, remove last path segment
+            if cursor == input.len() && input.len() > 1 {
+                // Strip trailing slash if present
+                let trimmed = if input.ends_with('/') {
+                    &input[..input.len() - 1]
+                } else {
+                    &input
+                };
+                // Find the last slash and truncate after it
+                if let Some(pos) = trimmed.rfind('/') {
+                    input.truncate(pos + 1);
+                    cursor = input.len();
+                }
+            } else if cursor > 0 {
                 input.remove(cursor - 1);
                 cursor -= 1;
             }
-            app.mode = AppMode::PathEdit {
-                pane_id,
-                input,
-                cursor,
-            };
+            path_edit_set(app, pane_id, input, cursor);
+        }
+        KeyCode::Tab | KeyCode::BackTab => {
+            let backward = shift || key.code == KeyCode::BackTab;
+
+            if completions.is_empty() || completion_index.is_none() {
+                // First Tab press: compute completions
+                let (prefix, matches) = compute_completions(&input, &app.home_path);
+                if matches.is_empty() {
+                    return;
+                }
+                let idx = 0;
+                let new_input = matches[idx].clone();
+                let new_cursor = new_input.len();
+                app.mode = AppMode::PathEdit {
+                    pane_id,
+                    input: new_input,
+                    cursor: new_cursor,
+                    completions: matches,
+                    completion_index: Some(idx),
+                    completion_prefix: prefix,
+                };
+            } else {
+                // Cycle through existing completions
+                let len = completions.len();
+                let cur = completion_index.unwrap_or(0);
+                let next = if backward {
+                    if cur == 0 { len - 1 } else { cur - 1 }
+                } else {
+                    (cur + 1) % len
+                };
+                let new_input = completions[next].clone();
+                let new_cursor = new_input.len();
+                app.mode = AppMode::PathEdit {
+                    pane_id,
+                    input: new_input,
+                    cursor: new_cursor,
+                    completions,
+                    completion_index: Some(next),
+                    completion_prefix,
+                };
+            }
         }
         KeyCode::Left => {
             if cursor > 0 {
                 cursor -= 1;
             }
-            app.mode = AppMode::PathEdit {
-                pane_id,
-                input,
-                cursor,
-            };
+            path_edit_set(app, pane_id, input, cursor);
         }
         KeyCode::Right => {
             if cursor < input.len() {
                 cursor += 1;
             }
-            app.mode = AppMode::PathEdit {
-                pane_id,
-                input,
-                cursor,
-            };
+            path_edit_set(app, pane_id, input, cursor);
         }
         KeyCode::Char(c) => {
             input.insert(cursor, c);
             cursor += 1;
-            app.mode = AppMode::PathEdit {
-                pane_id,
-                input,
-                cursor,
-            };
+            // Reset completions when typing
+            path_edit_set(app, pane_id, input, cursor);
         }
         _ => {}
     }
@@ -474,7 +599,7 @@ fn open_focused(app: &mut App) {
         app.navigate_to(&pane_id, &entry.path);
     } else {
         if let Err(e) = panex_core::open_entry(&entry.path) {
-            app.status_message = Some(format!("Open failed: {}", e));
+            app.set_status(format!("Open failed: {}", e));
         }
     }
 }
@@ -522,7 +647,7 @@ fn split_active_pane(app: &mut App, direction: SplitDirection) {
             app.raw_entries_map.insert(new_id.clone(), raw);
         }
         Err(e) => {
-            app.status_message = Some(format!("Error: {}", e));
+            app.set_status(format!("Error: {}", e));
         }
     }
     app.pane_map.insert(new_id, new_pane);
@@ -587,14 +712,14 @@ fn copy_to_clipboard(app: &mut App, mode: ClipMode) {
         ClipMode::Cut => "Cut",
     };
     app.file_clipboard = Some(FileClipboard { entries, mode });
-    app.status_message = Some(format!("{} {} item(s)", label, count));
+    app.set_status(format!("{} {} item(s)", label, count));
 }
 
 fn paste_clipboard(app: &mut App) {
     let clipboard = match &app.file_clipboard {
         Some(c) => c,
         None => {
-            app.status_message = Some("Nothing to paste".to_string());
+            app.set_status("Nothing to paste".to_string());
             return;
         }
     };
@@ -626,9 +751,9 @@ fn paste_clipboard(app: &mut App) {
     }
 
     if errors.is_empty() {
-        app.status_message = Some(format!("Pasted {} item(s)", entries.len()));
+        app.set_status(format!("Pasted {} item(s)", entries.len()));
     } else {
-        app.status_message = Some(format!("Paste errors: {}", errors.join(", ")));
+        app.set_status(format!("Paste errors: {}", errors.join(", ")));
     }
 
     // Refresh all panes
@@ -685,6 +810,7 @@ fn start_delete(app: &mut App) {
         title: "Delete".to_string(),
         message,
         action: ConfirmAction::Delete(paths),
+        selected: 0, // default to Yes
     };
 }
 
@@ -694,7 +820,7 @@ fn open_in_default_app(app: &mut App) {
         if pane.focus_index >= 0 && (pane.focus_index as usize) < pane.entries.len() {
             let path = pane.entries[pane.focus_index as usize].path.clone();
             if let Err(e) = panex_core::open_entry(&path) {
-                app.status_message = Some(format!("Open failed: {}", e));
+                app.set_status(format!("Open failed: {}", e));
             }
         }
     }
@@ -704,7 +830,7 @@ fn open_in_terminal(app: &mut App) {
     let pane_id = app.active_pane_id.clone();
     if let Some(pane) = app.pane_map.get(&pane_id) {
         if let Err(e) = panex_core::open_in_terminal(&pane.current_path) {
-            app.status_message = Some(format!("Terminal failed: {}", e));
+            app.set_status(format!("Terminal failed: {}", e));
         }
     }
 }

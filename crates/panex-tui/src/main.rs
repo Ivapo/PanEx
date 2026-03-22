@@ -54,6 +54,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             last_tick = Instant::now();
         }
 
+        // Auto-clear status message after 3 seconds
+        if let Some(at) = app.status_message_at {
+            if at.elapsed() >= Duration::from_secs(3) {
+                app.status_message = None;
+                app.status_message_at = None;
+            }
+        }
+
         if app.should_quit {
             break;
         }

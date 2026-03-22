@@ -25,13 +25,15 @@ cd ~/Projects && panex
 - Multi-pane layout — split vertically (`|`) or horizontally (`-`), close with `W`
 - Keyboard-driven navigation with vim-style keys (`j`/`k`) or arrow keys
 - File operations: copy (`y`), cut (`x`), paste (`p`), rename (`r`/`F2`), delete (`d`)
+- Delete confirmation dialog with arrow key selection
 - Search with `/` or `Ctrl+f`
 - Sortable columns — cycle field with `s`, toggle direction with `S`
 - Show/hide hidden files (`.`)
-- Editable path bar (`e`) with `~` expansion
+- Editable path bar (`e`) with `~` expansion, Tab completion, and segment-wise backspace
 - Open files in default app (`o`) or open directory in terminal (`t`)
 - Create new files (`n`) and folders (`N`)
 - Multi-select with `Shift+j`/`Shift+k`, select all with `Ctrl+a`
+- Auto-clearing status messages
 
 ## Keyboard Shortcuts
 
@@ -58,7 +60,7 @@ cd ~/Projects && panex
 | `s` | Cycle sort field |
 | `S` | Toggle sort direction |
 | `.` | Toggle hidden files |
-| `e` | Edit path |
+| `e` | Edit path (Tab to autocomplete, Backspace removes path segment) |
 | `Ctrl+a` | Select all |
 | `Esc` | Deselect / cancel |
 | `q` | Quit |

@@ -41,6 +41,7 @@ pub enum AppMode {
         title: String,
         message: String,
         action: ConfirmAction,
+        selected: usize, // 0 = Yes, 1 = No
     },
     Prompt {
         title: String,
@@ -52,6 +53,9 @@ pub enum AppMode {
         pane_id: String,
         input: String,
         cursor: usize,
+        completions: Vec<String>,
+        completion_index: Option<usize>,
+        completion_prefix: String,
     },
 }
 
@@ -90,6 +94,7 @@ pub struct App {
     pub raw_entries_map: HashMap<String, Vec<FileEntry>>,
     pub mode: AppMode,
     pub status_message: Option<String>,
+    pub status_message_at: Option<std::time::Instant>,
     pub should_quit: bool,
 }
 
@@ -127,8 +132,14 @@ impl App {
             raw_entries_map,
             mode: AppMode::Normal,
             status_message: None,
+            status_message_at: None,
             should_quit: false,
         })
+    }
+
+    pub fn set_status(&mut self, msg: String) {
+        self.status_message = Some(msg);
+        self.status_message_at = Some(std::time::Instant::now());
     }
 
     pub fn navigate_to(&mut self, pane_id: &str, path: &str) {
@@ -157,7 +168,7 @@ impl App {
                 self.status_message = None;
             }
             Err(e) => {
-                self.status_message = Some(format!("Error: {}", e));
+                self.set_status(format!("Error: {}", e));
             }
         }
     }
@@ -197,7 +208,7 @@ impl App {
                 self.raw_entries_map.insert(pane_id.to_string(), raw_entries);
             }
             Err(e) => {
-                self.status_message = Some(format!("Error: {}", e));
+                self.set_status(format!("Error: {}", e));
             }
         }
     }

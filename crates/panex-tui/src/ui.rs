@@ -22,8 +22,8 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
 
     // Render dialog overlays
     match &app.mode {
-        AppMode::Confirm { title, message, .. } => {
-            render_confirm_dialog(frame, area, title, message);
+        AppMode::Confirm { title, message, selected, .. } => {
+            render_confirm_dialog(frame, area, title, message, *selected);
         }
         AppMode::Prompt {
             title,
@@ -36,8 +36,13 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         AppMode::Rename { input, cursor, .. } => {
             render_prompt_dialog(frame, area, "Rename", input, *cursor);
         }
-        AppMode::PathEdit { input, cursor, .. } => {
-            render_prompt_dialog(frame, area, "Go to path", input, *cursor);
+        AppMode::PathEdit { input, cursor, completions, completion_index, .. } => {
+            let title = if let Some(idx) = completion_index {
+                format!("Go to path ({}/{})", idx + 1, completions.len())
+            } else {
+                "Go to path".to_string()
+            };
+            render_prompt_dialog(frame, area, &title, input, *cursor);
         }
         _ => {}
     }
@@ -306,9 +311,9 @@ fn render_status_bar(frame: &mut Frame, app: &App, area: Rect) {
         AppMode::Normal => "q:quit │:split W:close Tab:pane /:search",
         AppMode::Search { .. } => "Esc:cancel  Enter:confirm",
         AppMode::Rename { .. } => "Esc:cancel  Enter:rename",
-        AppMode::Confirm { .. } => "y:confirm  n/Esc:cancel",
+        AppMode::Confirm { .. } => "←→:select  Enter:confirm  y/n  Esc:cancel",
         AppMode::Prompt { .. } => "Esc:cancel  Enter:create",
-        AppMode::PathEdit { .. } => "Esc:cancel  Enter:go",
+        AppMode::PathEdit { .. } => "Tab:complete  Bksp:up dir  Enter:go  Esc:cancel",
     };
 
     if let Some(msg) = &app.status_message {
@@ -328,7 +333,7 @@ fn render_status_bar(frame: &mut Frame, app: &App, area: Rect) {
     }
 }
 
-fn render_confirm_dialog(frame: &mut Frame, area: Rect, title: &str, message: &str) {
+fn render_confirm_dialog(frame: &mut Frame, area: Rect, title: &str, message: &str, selected: usize) {
     let dialog = centered_rect(50, 7, area);
     frame.render_widget(Clear, dialog);
     let block = Block::default()
@@ -338,14 +343,27 @@ fn render_confirm_dialog(frame: &mut Frame, area: Rect, title: &str, message: &s
     let inner = block.inner(dialog);
     frame.render_widget(block, dialog);
 
+    let yes_style = if selected == 0 {
+        Style::default().fg(Color::Black).bg(Color::Green).add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().fg(Color::DarkGray)
+    };
+    let no_style = if selected == 1 {
+        Style::default().fg(Color::Black).bg(Color::Red).add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().fg(Color::DarkGray)
+    };
+
     let text = Paragraph::new(vec![
         Line::from(""),
         Line::from(message.to_string()),
         Line::from(""),
-        Line::from(Span::styled(
-            "  [y] Yes   [n] No",
-            Style::default().fg(Color::DarkGray),
-        )),
+        Line::from(vec![
+            Span::raw("  "),
+            Span::styled(" Yes ", yes_style),
+            Span::raw("   "),
+            Span::styled(" No ", no_style),
+        ]),
     ]);
     frame.render_widget(text, inner);
 }

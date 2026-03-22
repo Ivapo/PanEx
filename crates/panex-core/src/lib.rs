@@ -121,7 +121,20 @@ pub fn delete_entry(path: &str, permanent: bool) -> Result<(), String> {
             fs::remove_file(&target).map_err(|e| format!("Failed to delete: {}", e))
         }
     } else {
-        trash::delete(&target).map_err(|e| format!("Failed to move to trash: {}", e))
+        {
+            #[cfg(target_os = "macos")]
+            {
+                use trash::macos::{DeleteMethod, TrashContextExtMacos};
+                use trash::TrashContext;
+                let mut ctx = TrashContext::default();
+                ctx.set_delete_method(DeleteMethod::NsFileManager);
+                ctx.delete(&target).map_err(|e| format!("Failed to move to trash: {}", e))
+            }
+            #[cfg(not(target_os = "macos"))]
+            {
+                trash::delete(&target).map_err(|e| format!("Failed to move to trash: {}", e))
+            }
+        }
     }
 }
 
