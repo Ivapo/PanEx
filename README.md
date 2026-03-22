@@ -1,6 +1,6 @@
 # PaneExplorer
 
-A lightweight, multi-pane file explorer built with Tauri v2, Rust, and TypeScript.
+A lightweight, multi-pane file explorer built with Tauri v2, Rust, and TypeScript. Also available as a [terminal UI](#terminal-ui-panex-tui).
 
 **[Website](https://ivapo.github.io/PanEx/)**
 
@@ -95,6 +95,17 @@ bun run tauri dev
 # Build for production
 bun run tauri build
 ```
+
+## Terminal UI (panex-tui)
+
+PanEx also ships as a terminal app powered by [ratatui](https://github.com/ratatui/ratatui) — no GUI needed.
+
+```bash
+cargo install panex-tui
+panex
+```
+
+Multi-pane splits, vim-style keys, file operations, search, sorting, and hidden files toggle — all in the terminal. See the full [panex-tui README](crates/panex-tui/README.md) for keybindings and details.
 
 ## Support
 
