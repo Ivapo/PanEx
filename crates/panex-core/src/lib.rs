@@ -1,3 +1,5 @@
+pub mod config;
+
 use serde::Serialize;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -76,6 +78,11 @@ pub fn rename_entry(path: &str, new_name: &str) -> Result<(), String> {
 }
 
 pub fn open_entry(path: &str) -> Result<(), String> {
+    open_entry_with_app(path, None)
+}
+
+/// Open a file with a specific application, or the system default if None.
+pub fn open_entry_with_app(path: &str, app: Option<&str>) -> Result<(), String> {
     let target = std::path::PathBuf::from(path);
     if !target.exists() {
         return Err(format!("Path does not exist: {}", path));
@@ -83,29 +90,53 @@ pub fn open_entry(path: &str) -> Result<(), String> {
 
     #[cfg(target_os = "macos")]
     {
-        std::process::Command::new("open")
-            .arg(path)
+        let mut cmd = std::process::Command::new("open");
+        if let Some(app_name) = app {
+            cmd.args(["-a", app_name]);
+        }
+        cmd.arg(path)
             .spawn()
             .map_err(|e| format!("Failed to open: {}", e))?;
     }
 
     #[cfg(target_os = "windows")]
     {
-        std::process::Command::new("cmd")
-            .args(["/C", "start", "", path])
-            .spawn()
-            .map_err(|e| format!("Failed to open: {}", e))?;
+        if let Some(app_name) = app {
+            std::process::Command::new(app_name)
+                .arg(path)
+                .spawn()
+                .map_err(|e| format!("Failed to open with {}: {}", app_name, e))?;
+        } else {
+            std::process::Command::new("cmd")
+                .args(["/C", "start", "", path])
+                .spawn()
+                .map_err(|e| format!("Failed to open: {}", e))?;
+        }
     }
 
     #[cfg(target_os = "linux")]
     {
-        std::process::Command::new("xdg-open")
-            .arg(path)
-            .spawn()
-            .map_err(|e| format!("Failed to open: {}", e))?;
+        if let Some(app_name) = app {
+            std::process::Command::new(app_name)
+                .arg(path)
+                .spawn()
+                .map_err(|e| format!("Failed to open with {}: {}", app_name, e))?;
+        } else {
+            std::process::Command::new("xdg-open")
+                .arg(path)
+                .spawn()
+                .map_err(|e| format!("Failed to open: {}", e))?;
+        }
     }
 
     Ok(())
+}
+
+/// Get the file extension (without dot) from a path.
+pub fn get_extension(path: &str) -> Option<String> {
+    Path::new(path)
+        .extension()
+        .map(|e| e.to_string_lossy().to_string())
 }
 
 pub fn delete_entry(path: &str, permanent: bool) -> Result<(), String> {

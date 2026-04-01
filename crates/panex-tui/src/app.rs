@@ -1,4 +1,5 @@
 use panex_core::FileEntry;
+use panex_core::config::PanexConfig;
 use ratatui::widgets::TableState;
 use std::collections::{HashMap, HashSet};
 
@@ -57,6 +58,10 @@ pub enum AppMode {
         completion_index: Option<usize>,
         completion_prefix: String,
     },
+    FavoritesList {
+        pane_id: String,
+        selected: usize,
+    },
 }
 
 #[derive(PartialEq)]
@@ -96,6 +101,7 @@ pub struct App {
     pub status_message: Option<String>,
     pub status_message_at: Option<std::time::Instant>,
     pub should_quit: bool,
+    pub config: PanexConfig,
 }
 
 impl App {
@@ -117,6 +123,8 @@ impl App {
         raw_entries_map.insert(pane_id.clone(), raw_entries);
         pane_map.insert(pane_id.clone(), pane);
 
+        let config = PanexConfig::load();
+
         Ok(Self {
             layout_root: LayoutNode::Leaf {
                 pane_id: pane_id.clone(),
@@ -134,6 +142,7 @@ impl App {
             status_message: None,
             status_message_at: None,
             should_quit: false,
+            config,
         })
     }
 

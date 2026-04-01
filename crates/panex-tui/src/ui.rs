@@ -44,6 +44,9 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
             };
             render_prompt_dialog(frame, area, &title, input, *cursor);
         }
+        AppMode::FavoritesList { selected, .. } => {
+            render_favorites_dialog(frame, area, &app.config.favorites.paths, *selected);
+        }
         _ => {}
     }
 }
@@ -110,10 +113,11 @@ fn render_pane(frame: &mut Frame, app: &mut App, pane_id: &str, area: Rect) {
         current_path.clone()
     };
 
+    let fav_indicator = if app.config.is_favorite(&current_path) { "★ " } else { "" };
     let title = if let Some(ref query) = search_mode_query {
         format!(" 🔍 {} ", query)
     } else {
-        format!(" {} ", display_path)
+        format!(" {}{} ", fav_indicator, display_path)
     };
 
     let block = Block::default()
@@ -308,12 +312,13 @@ fn render_status_bar(frame: &mut Frame, app: &App, area: Rect) {
     let left = parts.join(" │ ");
 
     let mode_hint = match &app.mode {
-        AppMode::Normal => "q:quit │:split W:close Tab:pane /:search",
+        AppMode::Normal => "q:quit │:split W:close Tab:pane /:search f:fav",
         AppMode::Search { .. } => "Esc:cancel  Enter:confirm",
         AppMode::Rename { .. } => "Esc:cancel  Enter:rename",
         AppMode::Confirm { .. } => "←→:select  Enter:confirm  y/n  Esc:cancel",
         AppMode::Prompt { .. } => "Esc:cancel  Enter:create",
         AppMode::PathEdit { .. } => "Tab:complete  Bksp:up dir  Enter:go  Esc:cancel",
+        AppMode::FavoritesList { .. } => "↑↓:select  Enter:go  e:edit path  d:remove  Esc:cancel",
     };
 
     if let Some(msg) = &app.status_message {
@@ -391,6 +396,31 @@ fn render_prompt_dialog(frame: &mut Frame, area: Rect, title: &str, input: &str,
     ]);
 
     let text = Paragraph::new(vec![Line::from(""), line]);
+    frame.render_widget(text, inner);
+}
+
+fn render_favorites_dialog(frame: &mut Frame, area: Rect, favorites: &[String], selected: usize) {
+    let height = (favorites.len() as u16 + 4).min(area.height.saturating_sub(4));
+    let dialog = centered_rect(60, height, area);
+    frame.render_widget(Clear, dialog);
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::Yellow))
+        .title(" ★ Favorites (e:edit path) ");
+    let inner = block.inner(dialog);
+    frame.render_widget(block, dialog);
+
+    let mut lines = Vec::new();
+    for (i, path) in favorites.iter().enumerate() {
+        let style = if i == selected {
+            Style::default().fg(Color::Black).bg(Color::Yellow).add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(Color::White)
+        };
+        lines.push(Line::from(Span::styled(format!("  {}  ", path), style)));
+    }
+
+    let text = Paragraph::new(lines);
     frame.render_widget(text, inner);
 }
 

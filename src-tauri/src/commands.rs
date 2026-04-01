@@ -1,4 +1,5 @@
 use panex_core::FileEntry;
+use panex_core::config::PanexConfig;
 
 #[tauri::command]
 pub fn read_dir(path: String) -> Result<Vec<FileEntry>, String> {
@@ -20,6 +21,12 @@ pub fn get_parent_dir(path: String) -> Result<String, String> {
 
 #[tauri::command]
 pub fn open_entry(path: String) -> Result<(), String> {
+    let config = PanexConfig::load();
+    if let Some(ext) = panex_core::get_extension(&path) {
+        if let Some(app) = config.get_gui_app(&ext) {
+            return panex_core::open_entry_with_app(&path, Some(app));
+        }
+    }
     panex_core::open_entry(&path)
 }
 
@@ -61,4 +68,20 @@ pub fn create_folder(dir: String, name: String) -> Result<(), String> {
 #[tauri::command]
 pub fn open_in_terminal(path: String) -> Result<(), String> {
     panex_core::open_in_terminal(&path)
+}
+
+#[tauri::command]
+pub fn get_favorites() -> Vec<String> {
+    PanexConfig::load().favorites.paths
+}
+
+#[tauri::command]
+pub fn is_favorite(path: String) -> bool {
+    PanexConfig::load().is_favorite(&path)
+}
+
+#[tauri::command]
+pub fn toggle_favorite(path: String) -> Result<bool, String> {
+    let mut config = PanexConfig::load();
+    config.toggle_favorite(&path)
 }

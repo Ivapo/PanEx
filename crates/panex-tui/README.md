@@ -30,6 +30,8 @@ cd ~/Projects && panex
 - Sortable columns — cycle field with `s`, toggle direction with `S`
 - Show/hide hidden files (`.`)
 - Editable path bar (`e`) with `~` expansion, Tab completion, and segment-wise backspace
+- Favorite locations — press `f` to bookmark, `e` to see favorites list
+- Custom default applications per extension via `~/.panex/config.toml`
 - Open files in default app (`o`) or open directory in terminal (`t`)
 - Create new files (`n`) and folders (`N`)
 - Multi-select with `Shift+j`/`Shift+k`, select all with `Ctrl+a`
@@ -60,10 +62,24 @@ cd ~/Projects && panex
 | `s` | Cycle sort field |
 | `S` | Toggle sort direction |
 | `.` | Toggle hidden files |
-| `e` | Edit path (Tab to autocomplete, Backspace removes path segment) |
+| `e` | Edit path / show favorites (Tab to autocomplete, Backspace removes path segment) |
+| `f` | Toggle current directory as favorite |
 | `Ctrl+a` | Select all |
 | `Esc` | Deselect / cancel |
 | `q` | Quit |
+
+## Configuration
+
+PanEx stores its config at `~/.panex/config.toml`. Favorites are managed via keyboard (`f` to toggle, `e` to browse). You can also set custom applications for opening files by extension:
+
+```toml
+[open.tui]
+".md" = "nvim"
+".pdf" = "less"
+".rs" = "nvim"
+```
+
+Extensions not listed fall back to the OS default (`open` on macOS, `xdg-open` on Linux).
 
 ## License
 

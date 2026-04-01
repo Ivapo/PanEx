@@ -390,6 +390,65 @@ body {
   min-width: 0;
 }
 
+/* Path wrap — positions the favorites dropdown relative to the breadcrumb area */
+.pane-path-wrap {
+  flex: 1;
+  min-width: 0;
+  position: relative;
+  display: flex;
+  align-items: center;
+  z-index: 10;
+}
+
+/* Favorite star button */
+.fav-btn {
+  color: var(--text-secondary);
+}
+
+.fav-btn.is-favorite {
+  color: #f5a623;
+}
+
+.fav-btn:hover {
+  color: #f5a623;
+}
+
+/* Favorites dropdown */
+.favorites-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  z-index: 1000;
+  max-height: 200px;
+  overflow-y: auto;
+  margin-top: 2px;
+}
+
+.favorites-dropdown-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  color: var(--text-primary);
+  padding: 6px 12px;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.favorites-dropdown-item:hover {
+  background: var(--bg-hover);
+}
+
 .breadcrumb-sep {
   margin: 0 2px;
   color: var(--text-secondary);
@@ -1384,17 +1443,31 @@ body {
   gap: 4px;
   min-height: 24px;
   position: relative;
-  z-index: 1;
+  z-index: 10;
 }
 
 /* Header children break the top border line with a background */
 [data-theme="tui"] .pane-nav,
 [data-theme="tui"] .pane-header .pane-path,
 [data-theme="tui"] .pane-header .pane-search-wrap,
+[data-theme="tui"] .pane-header .pane-path-wrap,
 [data-theme="tui"] .pane-header .pane-header-actions {
   background: var(--bg-primary);
   padding-left: 4px;
   padding-right: 4px;
+}
+
+[data-theme="tui"] .favorites-dropdown {
+  background: #0f0f17;
+  border-color: var(--border-color);
+}
+
+[data-theme="tui"] .favorites-dropdown-item {
+  background: #0f0f17;
+}
+
+[data-theme="tui"] .favorites-dropdown-item:hover {
+  background: var(--bg-hover);
 }
 
 /* File list sits above the border pseudo-element */

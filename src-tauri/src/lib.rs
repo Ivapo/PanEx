@@ -26,6 +26,9 @@ pub fn run() {
             commands::create_file,
             commands::create_folder,
             commands::open_in_terminal,
+            commands::get_favorites,
+            commands::is_favorite,
+            commands::toggle_favorite,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -66,6 +66,9 @@ export interface PaneCallbacks {
   onCreateFolder?: () => void;
   onOpenInTerminal?: () => void;
   onDropOnFolder?: (entries: FileEntry[], targetFolderPath: string, sourcePaneId: string, isCopy: boolean) => void;
+  isFavorite?: boolean;
+  onToggleFavorite?: () => void;
+  favorites?: string[];
 }
 
 export function renderPane(
@@ -101,11 +104,15 @@ export function renderPane(
     pathInput.value = pane.currentPath;
     pathInput.focus();
     pathInput.select();
+    if (callbacks.favorites && callbacks.favorites.length > 0) {
+      favDropdown.style.display = "";
+    }
   }
 
   function hidePathInput() {
     pathInput.style.display = "none";
     pathDisplay.style.display = "";
+    favDropdown.style.display = "none";
   }
 
   pathInput.style.display = "none";
@@ -160,6 +167,40 @@ export function renderPane(
       segment.classList.add("breadcrumb-current");
     }
     pathDisplay.appendChild(segment);
+  }
+
+  // Favorite star button
+  const favBtn = document.createElement("button");
+  favBtn.className = `back-btn fav-btn${callbacks.isFavorite ? " is-favorite" : ""}`;
+  favBtn.innerHTML = callbacks.isFavorite
+    ? `<svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor" stroke="currentColor" stroke-width="1"><path d="M7 1l1.8 3.6L13 5.2l-3 2.9.7 4.1L7 10.3 3.3 12.2l.7-4.1-3-2.9 4.2-.6z"/></svg>`
+    : `<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M7 1l1.8 3.6L13 5.2l-3 2.9.7 4.1L7 10.3 3.3 12.2l.7-4.1-3-2.9 4.2-.6z"/></svg>`;
+  favBtn.title = callbacks.isFavorite ? "Remove from favorites" : "Add to favorites";
+  if (callbacks.onToggleFavorite) {
+    favBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      callbacks.onToggleFavorite!();
+    });
+  }
+
+  // Favorites dropdown container (shown when editing path)
+  const favDropdown = document.createElement("div");
+  favDropdown.className = "favorites-dropdown";
+  favDropdown.style.display = "none";
+
+  if (callbacks.favorites && callbacks.favorites.length > 0) {
+    for (const favPath of callbacks.favorites) {
+      const item = document.createElement("button");
+      item.className = "favorites-dropdown-item";
+      item.textContent = favPath;
+      item.addEventListener("mousedown", (e) => {
+        e.preventDefault(); // prevent blur on pathInput
+        callbacks.onNavigateTo(favPath);
+        favDropdown.style.display = "none";
+        hidePathInput();
+      });
+      favDropdown.appendChild(item);
+    }
   }
 
   const homeBtn = document.createElement("button");
@@ -247,12 +288,19 @@ export function renderPane(
   nav.className = "pane-nav";
   nav.appendChild(backBtn);
   nav.appendChild(homeBtn);
+  nav.appendChild(favBtn);
   nav.appendChild(searchBtn);
 
+  // Wrap path elements + favorites dropdown in a positioned container
+  const pathWrap = document.createElement("div");
+  pathWrap.className = "pane-path-wrap";
+  pathWrap.appendChild(searchWrap);
+  pathWrap.appendChild(pathDisplay);
+  pathWrap.appendChild(pathInput);
+  pathWrap.appendChild(favDropdown);
+
   header.appendChild(nav);
-  header.appendChild(searchWrap);
-  header.appendChild(pathDisplay);
-  header.appendChild(pathInput);
+  header.appendChild(pathWrap);
 
   const actions = document.createElement("div");
   actions.className = "pane-header-actions";

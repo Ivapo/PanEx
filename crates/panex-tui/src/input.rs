@@ -16,6 +16,7 @@ pub fn handle_key_event(app: &mut App, key: KeyEvent) {
         AppMode::Confirm { .. } => handle_confirm(app, key),
         AppMode::Prompt { .. } => handle_prompt(app, key),
         AppMode::PathEdit { .. } => handle_path_edit(app, key),
+        AppMode::FavoritesList { .. } => handle_favorites_list(app, key),
     }
 }
 
@@ -98,24 +99,44 @@ fn handle_normal(app: &mut App, key: KeyEvent) {
             refilter_all_panes(app);
         }
 
-        // Path edit
+        // Path edit — show favorites list first if any exist
         KeyCode::Char('e') => {
             let pane_id = app.active_pane_id.clone();
-            let path = app
-                .pane_map
-                .get(&pane_id)
-                .map(|p| p.current_path.clone())
-                .unwrap_or_default();
-            app.mode = AppMode::PathEdit {
-                pane_id,
-                input: path.clone(),
-                cursor: path.len(),
-                completions: Vec::new(),
-                completion_index: None,
-                completion_prefix: String::new(),
-            };
+            if !app.config.favorites.paths.is_empty() {
+                app.mode = AppMode::FavoritesList {
+                    pane_id,
+                    selected: 0,
+                };
+            } else {
+                let path = app
+                    .pane_map
+                    .get(&pane_id)
+                    .map(|p| p.current_path.clone())
+                    .unwrap_or_default();
+                app.mode = AppMode::PathEdit {
+                    pane_id,
+                    input: path.clone(),
+                    cursor: path.len(),
+                    completions: Vec::new(),
+                    completion_index: None,
+                    completion_prefix: String::new(),
+                };
+            }
         }
 
+        // Toggle current path as favorite
+        KeyCode::Char('f') if !ctrl => {
+            let current_path = app
+                .pane_map
+                .get(&app.active_pane_id)
+                .map(|p| p.current_path.clone())
+                .unwrap_or_default();
+            match app.config.toggle_favorite(&current_path) {
+                Ok(true) => app.set_status(format!("★ Added to favorites")),
+                Ok(false) => app.set_status(format!("☆ Removed from favorites")),
+                Err(e) => app.set_status(format!("Favorite error: {}", e)),
+            }
+        }
 
         _ => {}
     }
@@ -554,6 +575,87 @@ fn handle_path_edit(app: &mut App, key: KeyEvent) {
     }
 }
 
+fn handle_favorites_list(app: &mut App, key: KeyEvent) {
+    let (pane_id, selected) = if let AppMode::FavoritesList { pane_id, selected } = &app.mode {
+        (pane_id.clone(), *selected)
+    } else {
+        return;
+    };
+
+    let count = app.config.favorites.paths.len();
+    if count == 0 {
+        app.mode = AppMode::Normal;
+        return;
+    }
+
+    match key.code {
+        KeyCode::Esc => {
+            app.mode = AppMode::Normal;
+        }
+        KeyCode::Up | KeyCode::Char('k') => {
+            let new_sel = if selected == 0 { count - 1 } else { selected - 1 };
+            app.mode = AppMode::FavoritesList {
+                pane_id,
+                selected: new_sel,
+            };
+        }
+        KeyCode::Down | KeyCode::Char('j') => {
+            let new_sel = (selected + 1) % count;
+            app.mode = AppMode::FavoritesList {
+                pane_id,
+                selected: new_sel,
+            };
+        }
+        KeyCode::Enter => {
+            let fav_path = app.config.favorites.paths[selected].clone();
+            // Expand ~ to home
+            let target = if fav_path.starts_with('~') {
+                fav_path.replacen('~', &app.home_path, 1)
+            } else {
+                fav_path
+            };
+            app.navigate_to(&pane_id, &target);
+            app.mode = AppMode::Normal;
+        }
+        // 'e' again or '/' switches to path edit mode (type a path manually)
+        KeyCode::Char('e') | KeyCode::Char('/') => {
+            let path = app
+                .pane_map
+                .get(&pane_id)
+                .map(|p| p.current_path.clone())
+                .unwrap_or_default();
+            app.mode = AppMode::PathEdit {
+                pane_id,
+                input: path.clone(),
+                cursor: path.len(),
+                completions: Vec::new(),
+                completion_index: None,
+                completion_prefix: String::new(),
+            };
+        }
+        // 'd' deletes the selected favorite
+        KeyCode::Char('d') => {
+            let fav_path = app.config.favorites.paths[selected].clone();
+            match app.config.remove_favorite(&fav_path) {
+                Ok(()) => {
+                    app.set_status(format!("Removed favorite: {}", fav_path));
+                    if app.config.favorites.paths.is_empty() {
+                        app.mode = AppMode::Normal;
+                    } else {
+                        let new_sel = selected.min(app.config.favorites.paths.len() - 1);
+                        app.mode = AppMode::FavoritesList {
+                            pane_id,
+                            selected: new_sel,
+                        };
+                    }
+                }
+                Err(e) => app.set_status(format!("Error: {}", e)),
+            }
+        }
+        _ => {}
+    }
+}
+
 // --- Helper functions ---
 
 fn move_focus(app: &mut App, delta: i32) {
@@ -598,7 +700,9 @@ fn open_focused(app: &mut App) {
     if entry.is_dir {
         app.navigate_to(&pane_id, &entry.path);
     } else {
-        if let Err(e) = panex_core::open_entry(&entry.path) {
+        let custom_app = panex_core::get_extension(&entry.path)
+            .and_then(|ext| app.config.get_tui_app(&ext).cloned());
+        if let Err(e) = panex_core::open_entry_with_app(&entry.path, custom_app.as_deref()) {
             app.set_status(format!("Open failed: {}", e));
         }
     }
@@ -819,7 +923,9 @@ fn open_in_default_app(app: &mut App) {
     if let Some(pane) = app.pane_map.get(&pane_id) {
         if pane.focus_index >= 0 && (pane.focus_index as usize) < pane.entries.len() {
             let path = pane.entries[pane.focus_index as usize].path.clone();
-            if let Err(e) = panex_core::open_entry(&path) {
+            let custom_app = panex_core::get_extension(&path)
+                .and_then(|ext| app.config.get_tui_app(&ext).cloned());
+            if let Err(e) = panex_core::open_entry_with_app(&path, custom_app.as_deref()) {
                 app.set_status(format!("Open failed: {}", e));
             }
         }

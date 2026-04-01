@@ -18,6 +18,9 @@ let sortDirection: SortDirection = (localStorage.getItem("paneexplorer_sort_dir"
 const dirSizeCache = new Map<string, number>();
 // Stores the full unfiltered entries per pane (for search re-filtering without disk reload)
 const rawEntriesMap = new Map<string, FileEntry[]>();
+// Cached favorites list and per-path state
+let cachedFavorites: string[] = [];
+const favoriteStateCache = new Map<string, boolean>();
 
 function nextPaneId(): string {
   return "pane-" + paneCounter++;
@@ -519,6 +522,26 @@ function formatSize(bytes: number): string {
   return `${s.toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
 }
 
+async function reloadFavorites() {
+  cachedFavorites = await fs.getFavorites();
+  favoriteStateCache.clear();
+  for (const fav of cachedFavorites) {
+    favoriteStateCache.set(fav, true);
+  }
+}
+
+function isPathFavorite(path: string): boolean {
+  return favoriteStateCache.has(path) || cachedFavorites.includes(path);
+}
+
+async function handleToggleFavorite(paneId: string) {
+  const pane = paneMap.get(paneId);
+  if (!pane) return;
+  await fs.toggleFavorite(pane.currentPath);
+  await reloadFavorites();
+  renderLayout();
+}
+
 async function init() {
   initTheme();
 
@@ -528,6 +551,7 @@ async function init() {
   }
 
   homePath = await fs.getHomeDir();
+  await reloadFavorites();
   await initPanes();
 }
 
@@ -717,6 +741,9 @@ function renderNode(node: LayoutNode, totalPanes: number): HTMLElement {
       onOpenInTerminal: () => handleOpenInTerminal(paneId),
       onDropOnFolder: (entries: FileEntry[], targetFolderPath: string, sourcePaneId: string, isCopy: boolean) =>
         handleDropOnFolder(paneId, entries, targetFolderPath, sourcePaneId, isCopy),
+      isFavorite: isPathFavorite(pane.currentPath),
+      onToggleFavorite: () => handleToggleFavorite(paneId),
+      favorites: cachedFavorites,
       onSearchChange: (query: string) => handleSearchChange(paneId, query),
       onSearchExit: () => {
         const p = paneMap.get(paneId);

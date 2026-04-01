@@ -254,7 +254,7 @@
 
   <!-- Hero -->
   <header class="hero">
-    <h1><span>PanEx</span> &mdash; PaneExplorer <span class="version">v0.3.1</span></h1>
+    <h1><span>PanEx</span> &mdash; PaneExplorer <span class="version">v0.4.0</span></h1>
     <p class="tagline">Browse your local directories side by side.</p>
 
     <div class="btn-row">
@@ -264,15 +264,15 @@
           macOS &#9662;
         </span>
         <div class="dropdown-menu">
-          <a href="https://github.com/Ivapo/PanEx/releases/latest/download/PaneExplorer_0.3.1_aarch64.dmg">Apple Silicon</a>
-          <a href="https://github.com/Ivapo/PanEx/releases/latest/download/PaneExplorer_0.3.1_x64.dmg">Intel</a>
+          <a href="https://github.com/Ivapo/PanEx/releases/latest/download/PaneExplorer_0.4.0_aarch64.dmg">Apple Silicon</a>
+          <a href="https://github.com/Ivapo/PanEx/releases/latest/download/PaneExplorer_0.4.0_x64.dmg">Intel</a>
         </div>
       </div>
-      <a href="https://github.com/Ivapo/PanEx/releases/latest/download/PaneExplorer_0.3.1_x64-setup.exe" class="btn btn-primary">
+      <a href="https://github.com/Ivapo/PanEx/releases/latest/download/PaneExplorer_0.4.0_x64-setup.exe" class="btn btn-primary">
         <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
         Windows
       </a>
-      <a href="https://github.com/Ivapo/PanEx/releases/latest/download/PaneExplorer_0.3.1_amd64.AppImage" class="btn btn-primary">
+      <a href="https://github.com/Ivapo/PanEx/releases/latest/download/PaneExplorer_0.4.0_amd64.AppImage" class="btn btn-primary">
         <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
         Linux
       </a>
@@ -335,7 +335,8 @@
           <tr><td>Go to home</td><td><kbd>Home</kbd></td><td><kbd>Home</kbd></td><td>Yes</td><td><kbd>Home</kbd> / <kbd>~</kbd></td></tr>
           <tr><td>Switch pane</td><td><kbd>Tab</kbd></td><td><kbd>Tab</kbd></td><td>Yes</td><td><kbd>Tab</kbd></td></tr>
           <tr><td>Deselect / Exit</td><td><kbd>Esc</kbd></td><td><kbd>Esc</kbd></td><td>Yes</td><td><kbd>Esc</kbd></td></tr>
-          <tr><td>Edit path (Tab to complete)</td><td colspan="3">&mdash;</td><td><kbd>e</kbd></td></tr>
+          <tr><td>Edit path / Favorites list</td><td colspan="3">&mdash;</td><td><kbd>e</kbd></td></tr>
+          <tr><td>Toggle favorite</td><td colspan="3">Star icon</td><td><kbd>f</kbd></td></tr>
           <tr><td>Open in default app</td><td colspan="3">&mdash;</td><td><kbd>o</kbd></td></tr>
           <tr><td>Quit</td><td colspan="3">&mdash;</td><td><kbd>q</kbd></td></tr>
 
@@ -451,6 +452,16 @@
         <p>Right-click empty space to open the current directory in your terminal. Auto-detects iTerm2 on macOS.</p>
       </div>
       <div class="feature-card">
+        <div class="icon">&#x2B50;</div>
+        <h3>Favorite Locations</h3>
+        <p>Star directories to bookmark them. Quick-access dropdown in the path bar, or press <kbd>e</kbd> in the TUI.</p>
+      </div>
+      <div class="feature-card">
+        <div class="icon">&#x2699;</div>
+        <h3>Custom Default Apps</h3>
+        <p>Configure per-extension open commands for GUI and TUI independently via <code>~/.panex/config.toml</code>.</p>
+      </div>
+      <div class="feature-card">
         <div class="icon">&#x1F441;</div>
         <h3>Hidden Files Toggle</h3>
         <p>Show or hide dotfiles with Cmd+. across all panes.</p>
@@ -462,7 +473,7 @@
   <footer>
     <p>
       <a href="https://github.com/Ivapo/PanEx">GitHub</a>
-      &nbsp;&middot;&nbsp; v0.3.1
+      &nbsp;&middot;&nbsp; v0.4.0
       &nbsp;&middot;&nbsp; &copy; 2026 PanEx
     </p>
   </footer>

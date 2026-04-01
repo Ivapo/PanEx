@@ -13,6 +13,9 @@ export interface FsBackend {
   createFile(dir: string, name: string): Promise<void>;
   createFolder(dir: string, name: string): Promise<void>;
   openInTerminal(path: string): Promise<void>;
+  getFavorites(): Promise<string[]>;
+  isFavorite(path: string): Promise<boolean>;
+  toggleFavorite(path: string): Promise<boolean>;
 }
 
 function createTauriFs(): FsBackend {
@@ -75,6 +78,18 @@ function createTauriFs(): FsBackend {
     async openInTerminal(path: string): Promise<void> {
       const invoke = await getInvoke();
       await invoke("open_in_terminal", { path });
+    },
+    async getFavorites(): Promise<string[]> {
+      const invoke = await getInvoke();
+      return invoke<string[]>("get_favorites");
+    },
+    async isFavorite(path: string): Promise<boolean> {
+      const invoke = await getInvoke();
+      return invoke<boolean>("is_favorite", { path });
+    },
+    async toggleFavorite(path: string): Promise<boolean> {
+      const invoke = await getInvoke();
+      return invoke<boolean>("toggle_favorite", { path });
     },
   };
 }
@@ -314,6 +329,30 @@ function createBrowserFs(): FsBackend {
 
     async openInTerminal(_path: string): Promise<void> {
       alert("Open in Terminal is not available in browser mode.");
+    },
+
+    async getFavorites(): Promise<string[]> {
+      const stored = localStorage.getItem("panex_favorites");
+      return stored ? JSON.parse(stored) : [];
+    },
+
+    async isFavorite(path: string): Promise<boolean> {
+      const favs = await this.getFavorites();
+      return favs.includes(path);
+    },
+
+    async toggleFavorite(path: string): Promise<boolean> {
+      const favs = await this.getFavorites();
+      const idx = favs.indexOf(path);
+      if (idx >= 0) {
+        favs.splice(idx, 1);
+        localStorage.setItem("panex_favorites", JSON.stringify(favs));
+        return false;
+      } else {
+        favs.push(path);
+        localStorage.setItem("panex_favorites", JSON.stringify(favs));
+        return true;
+      }
     },
 
     async getDirSize(path: string): Promise<number> {

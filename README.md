@@ -16,6 +16,8 @@ A lightweight, multi-pane file explorer built with Tauri v2, Rust, and TypeScrip
 - Drag files onto folders within the same pane
 - Create new files and folders via right-click context menu
 - Open current directory in terminal (auto-detects iTerm2 on macOS)
+- Favorite locations — star icon to bookmark directories, quick-access dropdown when editing the path
+- Custom default applications — configure per-extension open commands independently for GUI and TUI via `~/.panex/config.toml`
 - Sortable columns — click Name, Extension, Size, or Date Modified headers to sort (persists across sessions)
 - Show/hide hidden files toggle
 - Native performance — Rust handles all filesystem operations
@@ -65,6 +67,25 @@ A lightweight, multi-pane file explorer built with Tauri v2, Rust, and TypeScrip
 | Action | Mac | Windows |
 |---|---|---|
 | Toggle hidden files | `⌘.` | `Ctrl+.` |
+
+## Configuration
+
+PanEx uses a global config file at `~/.panex/config.toml` (created automatically). You can configure favorite locations and custom default applications for opening files:
+
+```toml
+[favorites]
+paths = ["~/dev", "~/Documents"]
+
+[open.gui]
+".md" = "Visual Studio Code"
+".pdf" = "Preview"
+
+[open.tui]
+".md" = "nvim"
+".rs" = "nvim"
+```
+
+GUI values are app names (passed to `open -a` on macOS). TUI values are terminal commands. Extensions not listed fall back to the OS default.
 
 ## Tech Stack
 
