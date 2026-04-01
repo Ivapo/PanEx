@@ -328,6 +328,106 @@ pub fn open_in_terminal(path: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Open a terminal running a specific command (e.g., "hx /path/to/file").
+pub fn open_in_terminal_with_command(command: &str, args: &[&str]) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        // Build the full command string for the shell
+        let mut full_cmd = shell_escape(command);
+        for arg in args {
+            full_cmd.push(' ');
+            full_cmd.push_str(&shell_escape(arg));
+        }
+
+        let app = if Path::new("/Applications/iTerm.app").exists() {
+            "iTerm"
+        } else {
+            "Terminal"
+        };
+
+        if app == "iTerm" {
+            // Use AppleScript to open a new iTerm tab with the command
+            let script = format!(
+                r#"tell application "iTerm"
+                    activate
+                    tell current window
+                        create tab with default profile
+                        tell current session
+                            write text "{}"
+                        end tell
+                    end tell
+                end tell"#,
+                full_cmd
+            );
+            std::process::Command::new("osascript")
+                .args(["-e", &script])
+                .spawn()
+                .map_err(|e| format!("Failed to open iTerm: {}", e))?;
+        } else {
+            // Terminal.app via AppleScript
+            let script = format!(
+                r#"tell application "Terminal"
+                    activate
+                    do script "{}"
+                end tell"#,
+                full_cmd
+            );
+            std::process::Command::new("osascript")
+                .args(["-e", &script])
+                .spawn()
+                .map_err(|e| format!("Failed to open Terminal: {}", e))?;
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        let mut full_cmd = command.to_string();
+        for arg in args {
+            full_cmd.push(' ');
+            full_cmd.push_str(arg);
+        }
+        std::process::Command::new("cmd")
+            .args(["/C", "start", "cmd", "/K", &full_cmd])
+            .spawn()
+            .map_err(|e| format!("Failed to open terminal: {}", e))?;
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        let mut full_cmd = command.to_string();
+        for arg in args {
+            full_cmd.push(' ');
+            full_cmd.push_str(arg);
+        }
+        let terminals = ["x-terminal-emulator", "gnome-terminal", "konsole", "xterm"];
+        let mut launched = false;
+        for term in &terminals {
+            let result = if *term == "gnome-terminal" {
+                std::process::Command::new(term)
+                    .args(["--", "sh", "-c", &full_cmd])
+                    .spawn()
+            } else {
+                std::process::Command::new(term)
+                    .args(["-e", &format!("sh -c '{}'", full_cmd)])
+                    .spawn()
+            };
+            if result.is_ok() {
+                launched = true;
+                break;
+            }
+        }
+        if !launched {
+            return Err("No supported terminal emulator found".to_string());
+        }
+    }
+
+    Ok(())
+}
+
+fn shell_escape(s: &str) -> String {
+    s.replace('\\', "\\\\").replace('"', "\\\"")
+}
+
 pub fn move_entry(source: &str, dest_dir: &str) -> Result<String, String> {
     let src = PathBuf::from(source);
     if !src.exists() {

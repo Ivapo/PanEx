@@ -700,11 +700,7 @@ fn open_focused(app: &mut App) {
     if entry.is_dir {
         app.navigate_to(&pane_id, &entry.path);
     } else {
-        let custom_app = panex_core::get_extension(&entry.path)
-            .and_then(|ext| app.config.get_tui_app(&ext).cloned());
-        if let Err(e) = panex_core::open_entry_with_app(&entry.path, custom_app.as_deref()) {
-            app.set_status(format!("Open failed: {}", e));
-        }
+        open_file_with_config(app, &entry.path);
     }
 }
 
@@ -923,11 +919,25 @@ fn open_in_default_app(app: &mut App) {
     if let Some(pane) = app.pane_map.get(&pane_id) {
         if pane.focus_index >= 0 && (pane.focus_index as usize) < pane.entries.len() {
             let path = pane.entries[pane.focus_index as usize].path.clone();
-            let custom_app = panex_core::get_extension(&path)
-                .and_then(|ext| app.config.get_tui_app(&ext).cloned());
-            if let Err(e) = panex_core::open_entry_with_app(&path, custom_app.as_deref()) {
-                app.set_status(format!("Open failed: {}", e));
-            }
+            open_file_with_config(app, &path);
+        }
+    }
+}
+
+/// Open a file using TUI config. Terminal commands (hx, nvim, etc.) open in a new terminal tab.
+fn open_file_with_config(app: &mut App, path: &str) {
+    let custom_app = panex_core::get_extension(path)
+        .and_then(|ext| app.config.get_tui_app(&ext).cloned());
+
+    if let Some(cmd) = custom_app {
+        // Open in a new terminal tab
+        if let Err(e) = panex_core::open_in_terminal_with_command(&cmd, &[path]) {
+            app.set_status(format!("Open failed: {}", e));
+        }
+    } else {
+        // Fall back to OS default
+        if let Err(e) = panex_core::open_entry(path) {
+            app.set_status(format!("Open failed: {}", e));
         }
     }
 }

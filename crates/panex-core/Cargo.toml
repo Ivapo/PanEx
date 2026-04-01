@@ -1,6 +1,6 @@
 [package]
 name = "panex-core"
-version = "0.4.0"
+version = "0.4.1"
 description = "Shared filesystem operations for PanEx"
 edition = "2021"
 license = "MIT"
