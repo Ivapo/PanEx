@@ -53,6 +53,12 @@ fn handle_normal(app: &mut App, key: KeyEvent) {
             app.navigate_to(&pane_id, &home);
         }
 
+        // Refresh active pane
+        KeyCode::F(5) => {
+            let pane_id = app.active_pane_id.clone();
+            app.refresh_pane(&pane_id);
+        }
+
         // Pane management
         KeyCode::Char('|') => split_active_pane(app, SplitDirection::Vertical),
         KeyCode::Char('-') if !ctrl => split_active_pane(app, SplitDirection::Horizontal),

@@ -5,7 +5,7 @@ mod sort;
 mod ui;
 
 use std::io;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use crossterm::event::{self, Event};
 use crossterm::execute;
@@ -36,34 +36,46 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
 
-    // Event loop
-    let tick_rate = Duration::from_millis(100);
-    let mut last_tick = Instant::now();
+    // Event loop — render on demand only. Idle = no CPU.
+    let status_ttl = Duration::from_secs(3);
+    let idle_timeout = Duration::from_secs(60);
+    terminal.draw(|frame| ui::draw(frame, &mut app))?;
 
     loop {
-        terminal.draw(|frame| ui::draw(frame, &mut app))?;
+        // Wake either for the next event or when the status message is due to expire.
+        let timeout = match app.status_message_at {
+            Some(at) => status_ttl.saturating_sub(at.elapsed()),
+            None => idle_timeout,
+        };
 
-        let timeout = tick_rate.saturating_sub(last_tick.elapsed());
+        let mut dirty = false;
+
         if event::poll(timeout)? {
-            if let Event::Key(key) = event::read()? {
-                input::handle_key_event(&mut app, key);
+            match event::read()? {
+                Event::Key(key) => {
+                    input::handle_key_event(&mut app, key);
+                    dirty = true;
+                }
+                Event::Resize(_, _) => dirty = true,
+                _ => {}
             }
-        }
-
-        if last_tick.elapsed() >= tick_rate {
-            last_tick = Instant::now();
         }
 
         // Auto-clear status message after 3 seconds
         if let Some(at) = app.status_message_at {
-            if at.elapsed() >= Duration::from_secs(3) {
+            if at.elapsed() >= status_ttl {
                 app.status_message = None;
                 app.status_message_at = None;
+                dirty = true;
             }
         }
 
         if app.should_quit {
             break;
+        }
+
+        if dirty {
+            terminal.draw(|frame| ui::draw(frame, &mut app))?;
         }
     }
 

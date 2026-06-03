@@ -312,7 +312,7 @@ fn render_status_bar(frame: &mut Frame, app: &App, area: Rect) {
     let left = parts.join(" │ ");
 
     let mode_hint = match &app.mode {
-        AppMode::Normal => "q:quit │:split W:close Tab:pane /:search f:fav",
+        AppMode::Normal => "q:quit │:split W:close Tab:pane /:search f:fav F5:refresh",
         AppMode::Search { .. } => "Esc:cancel  Enter:confirm",
         AppMode::Rename { .. } => "Esc:cancel  Enter:rename",
         AppMode::Confirm { .. } => "←→:select  Enter:confirm  y/n  Esc:cancel",
@@ -453,7 +453,7 @@ fn format_date(timestamp: u64) -> String {
     if timestamp == 0 {
         return "—".to_string();
     }
-    // Simple date formatting: MM/DD/YY
+    // Simple date formatting: DD/MM/YY
     let secs = timestamp as i64;
     let days = secs / 86400;
     // Approximate: days since epoch to date
@@ -482,7 +482,7 @@ fn format_date(timestamp: u64) -> String {
         remaining -= md as i64;
     }
     let d = remaining + 1;
-    format!("{:02}/{:02}/{:02}", m + 1, d, y % 100)
+    format!("{:02}/{:02}/{:02}", d, m + 1, y % 100)
 }
 
 fn is_leap(y: i32) -> bool {
