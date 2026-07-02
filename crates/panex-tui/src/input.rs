@@ -1,4 +1,4 @@
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 
 use crate::app::{App, AppMode, ClipMode, ConfirmAction, FileClipboard, PromptAction};
 use crate::layout::{self, SplitDirection, collect_leaf_ids, count_leaves};
@@ -11,6 +11,7 @@ pub fn handle_key_event(app: &mut App, key: KeyEvent) {
 
     match &app.mode {
         AppMode::Normal => handle_normal(app, key),
+        AppMode::Help => handle_help(app, key),
         AppMode::Search { .. } => handle_search(app, key),
         AppMode::Rename { .. } => handle_rename(app, key),
         AppMode::Confirm { .. } => handle_confirm(app, key),
@@ -45,6 +46,10 @@ fn handle_normal(app: &mut App, key: KeyEvent) {
         }
         KeyCode::Up | KeyCode::Char('k') => move_focus(app, -1),
         KeyCode::Down | KeyCode::Char('j') => move_focus(app, 1),
+        KeyCode::PageUp => page_move(app, -1),
+        KeyCode::PageDown => page_move(app, 1),
+        KeyCode::Char('g') => focus_to(app, 0),
+        KeyCode::Char('G') => focus_to(app, i32::MAX),
         KeyCode::Enter => open_focused(app),
         KeyCode::Backspace => navigate_up(app),
         KeyCode::Home | KeyCode::Char('~') => {
@@ -78,6 +83,11 @@ fn handle_normal(app: &mut App, key: KeyEvent) {
         KeyCode::Char('N') => start_new_folder(app),
         KeyCode::Char('a') if ctrl => select_all(app),
         KeyCode::Esc => deselect_all(app),
+
+        // Help overlay
+        KeyCode::Char('?') => {
+            app.mode = AppMode::Help;
+        }
 
         // Search
         KeyCode::Char('/') => {
@@ -146,6 +156,115 @@ fn handle_normal(app: &mut App, key: KeyEvent) {
 
         _ => {}
     }
+}
+
+fn handle_help(app: &mut App, key: KeyEvent) {
+    match key.code {
+        KeyCode::Esc | KeyCode::Enter | KeyCode::Char('q') | KeyCode::Char('?') => {
+            app.mode = AppMode::Normal;
+        }
+        _ => {}
+    }
+}
+
+/// Returns true if the event changed anything visible (caller redraws only then,
+/// so hover/move events don't trigger redraw storms).
+pub fn handle_mouse_event(app: &mut App, mouse: MouseEvent) -> bool {
+    let scroll_ok = matches!(app.mode, AppMode::Normal | AppMode::Search { .. });
+    match mouse.kind {
+        MouseEventKind::ScrollUp if scroll_ok => {
+            scroll_pane_at(app, mouse.column, mouse.row, -3)
+        }
+        MouseEventKind::ScrollDown if scroll_ok => {
+            scroll_pane_at(app, mouse.column, mouse.row, 3)
+        }
+        MouseEventKind::Down(MouseButton::Left) if app.mode == AppMode::Normal => {
+            click_at(app, mouse.column, mouse.row)
+        }
+        _ => false,
+    }
+}
+
+fn pane_at(app: &App, x: u16, y: u16) -> Option<String> {
+    app.pane_views.iter().find_map(|(id, view)| {
+        let a = view.area;
+        if x >= a.x && x < a.x + a.width && y >= a.y && y < a.y + a.height {
+            Some(id.clone())
+        } else {
+            None
+        }
+    })
+}
+
+/// Scroll the viewport of the pane under the cursor. Focus only moves when it
+/// would otherwise leave the visible window (so ratatui doesn't snap the
+/// offset back to the selected row on the next render).
+fn scroll_pane_at(app: &mut App, x: u16, y: u16, delta: i32) -> bool {
+    let pane_id = match pane_at(app, x, y) {
+        Some(id) => id,
+        None => return false,
+    };
+    let view_height = app
+        .pane_views
+        .get(&pane_id)
+        .map(|v| v.list_area.height as usize)
+        .unwrap_or(0);
+    let pane = match app.pane_map.get_mut(&pane_id) {
+        Some(p) => p,
+        None => return false,
+    };
+
+    let len = pane.entries.len();
+    if len == 0 || view_height == 0 {
+        return false;
+    }
+
+    let max_offset = len.saturating_sub(view_height) as i32;
+    let old_offset = pane.table_state.offset();
+    let new_offset = (old_offset as i32 + delta).clamp(0, max_offset) as usize;
+    *pane.table_state.offset_mut() = new_offset;
+
+    let mut focus_moved = false;
+    if pane.focus_index >= 0 {
+        let lo = new_offset as i32;
+        let hi = (new_offset + view_height - 1).min(len - 1) as i32;
+        let clamped = pane.focus_index.clamp(lo, hi);
+        if clamped != pane.focus_index {
+            pane.focus_index = clamped;
+            pane.table_state.select(Some(clamped as usize));
+            focus_moved = true;
+        }
+    }
+
+    new_offset != old_offset || focus_moved
+}
+
+fn click_at(app: &mut App, x: u16, y: u16) -> bool {
+    let pane_id = match pane_at(app, x, y) {
+        Some(id) => id,
+        None => return false,
+    };
+    let mut changed = false;
+    if app.active_pane_id != pane_id {
+        app.active_pane_id = pane_id.clone();
+        changed = true;
+    }
+
+    let list = match app.pane_views.get(&pane_id) {
+        Some(v) => v.list_area,
+        None => return changed,
+    };
+    if y >= list.y && y < list.y + list.height {
+        if let Some(pane) = app.pane_map.get_mut(&pane_id) {
+            let idx = pane.table_state.offset() + (y - list.y) as usize;
+            if idx < pane.entries.len() && pane.focus_index != idx as i32 {
+                pane.focus_index = idx as i32;
+                pane.table_state.select(Some(idx));
+                changed = true;
+            }
+        }
+    }
+    changed
 }
 
 fn handle_search(app: &mut App, key: KeyEvent) {
@@ -674,6 +793,28 @@ fn move_focus(app: &mut App, delta: i32) {
         pane.focus_index = new_idx;
         pane.table_state.select(Some(new_idx as usize));
     }
+}
+
+fn focus_to(app: &mut App, idx: i32) {
+    let pane_id = app.active_pane_id.clone();
+    if let Some(pane) = app.pane_map.get_mut(&pane_id) {
+        if pane.entries.is_empty() {
+            return;
+        }
+        let new_idx = idx.clamp(0, pane.entries.len() as i32 - 1);
+        pane.focus_index = new_idx;
+        pane.table_state.select(Some(new_idx as usize));
+    }
+}
+
+fn page_move(app: &mut App, dir: i32) {
+    let page = app
+        .pane_views
+        .get(&app.active_pane_id)
+        .map(|v| v.list_area.height as i32)
+        .filter(|h| *h > 0)
+        .unwrap_or(10);
+    move_focus(app, dir * page);
 }
 
 fn toggle_selection_at_focus(app: &mut App) {

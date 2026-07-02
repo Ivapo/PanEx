@@ -35,6 +35,8 @@ cd ~/Projects && panex
 - Open files in default app (`o`) or open directory in terminal (`t`)
 - Create new files (`n`) and folders (`N`)
 - Multi-select with `Shift+j`/`Shift+k`, select all with `Ctrl+a`
+- Mouse support — scroll the pane under the cursor, click to focus a pane / select a row
+- Built-in help overlay (`?`) with the full keybinding table
 - Auto-clearing status messages
 
 ## Keyboard Shortcuts
@@ -42,6 +44,8 @@ cd ~/Projects && panex
 | Key | Action |
 |---|---|
 | `j` / `k` or `Up` / `Down` | Move focus |
+| `PgUp` / `PgDn` | Move focus one page up / down |
+| `g` / `G` | Jump to top / bottom |
 | `Enter` | Open file / enter folder |
 | `Backspace` | Go up one directory |
 | `~` | Go to home directory |
@@ -66,7 +70,11 @@ cd ~/Projects && panex
 | `f` | Toggle current directory as favorite |
 | `Ctrl+a` | Select all |
 | `Esc` | Deselect / cancel |
+| `F5` | Refresh |
+| `?` | Toggle help overlay |
 | `q` | Quit |
+
+Mouse: the scroll wheel scrolls the pane under the cursor; left click focuses a pane and selects the row under the cursor. (To select text in the terminal while PanEx is running, use `Shift`+drag / `Option`+drag as usual for mouse-capture apps.)
 
 ## Configuration
 

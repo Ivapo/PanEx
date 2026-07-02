@@ -7,7 +7,7 @@ mod ui;
 use std::io;
 use std::time::Duration;
 
-use crossterm::event::{self, Event};
+use crossterm::event::{self, DisableMouseCapture, EnableMouseCapture, Event};
 use crossterm::execute;
 use crossterm::terminal::{
     disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
@@ -19,7 +19,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Setup terminal
     enable_raw_mode()?;
     let mut stdout = io::stdout();
-    execute!(stdout, EnterAlternateScreen)?;
+    execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
@@ -29,7 +29,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Err(e) => {
             // Restore terminal before printing error
             disable_raw_mode()?;
-            execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
+            execute!(terminal.backend_mut(), DisableMouseCapture, LeaveAlternateScreen)?;
             terminal.show_cursor()?;
             eprintln!("Failed to initialize: {}", e);
             std::process::exit(1);
@@ -51,13 +51,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let mut dirty = false;
 
         if event::poll(timeout)? {
-            match event::read()? {
-                Event::Key(key) => {
-                    input::handle_key_event(&mut app, key);
-                    dirty = true;
+            // Drain every pending event before redrawing so bursts
+            // (e.g. trackpad scrolling) coalesce into a single frame.
+            loop {
+                match event::read()? {
+                    Event::Key(key) => {
+                        input::handle_key_event(&mut app, key);
+                        dirty = true;
+                    }
+                    Event::Mouse(mouse) => {
+                        if input::handle_mouse_event(&mut app, mouse) {
+                            dirty = true;
+                        }
+                    }
+                    Event::Resize(_, _) => dirty = true,
+                    _ => {}
                 }
-                Event::Resize(_, _) => dirty = true,
-                _ => {}
+                if app.should_quit || !event::poll(Duration::ZERO)? {
+                    break;
+                }
             }
         }
 
@@ -81,7 +93,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Restore terminal
     disable_raw_mode()?;
-    execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
+    execute!(terminal.backend_mut(), DisableMouseCapture, LeaveAlternateScreen)?;
     terminal.show_cursor()?;
 
     Ok(())

@@ -4,7 +4,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Cell, Clear, Paragraph, Row, Table};
 use ratatui::Frame;
 
-use crate::app::{App, AppMode};
+use crate::app::{App, AppMode, PaneView};
 use crate::layout::{LayoutNode, SplitDirection};
 use crate::sort::SortField;
 
@@ -17,11 +17,15 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         .constraints([Constraint::Min(1), Constraint::Length(1)])
         .split(area);
 
+    app.pane_views.clear();
     render_layout_node(frame, app, &app.layout_root.clone(), chunks[0]);
     render_status_bar(frame, app, chunks[1]);
 
     // Render dialog overlays
     match &app.mode {
+        AppMode::Help => {
+            render_help_dialog(frame, area);
+        }
         AppMode::Confirm { title, message, selected, .. } => {
             render_confirm_dialog(frame, area, title, message, *selected);
         }
@@ -105,10 +109,15 @@ fn render_pane(frame: &mut Frame, app: &mut App, pane_id: &str, area: Rect) {
         })
         .unwrap_or_default();
 
-    // Build title with path (truncated from left if too long)
+    // Build title with path (truncated from left if too long).
+    // Truncate by chars, not bytes — byte slicing panics on multi-byte
+    // characters and when the pane is narrower than the path suffix.
     let max_title_len = area.width.saturating_sub(4) as usize;
-    let display_path = if current_path.len() > max_title_len {
-        format!("…{}", &current_path[current_path.len() - max_title_len + 1..])
+    let path_chars: Vec<char> = current_path.chars().collect();
+    let display_path = if path_chars.len() > max_title_len {
+        let keep = max_title_len.saturating_sub(1);
+        let tail: String = path_chars[path_chars.len() - keep..].iter().collect();
+        format!("…{}", tail)
     } else {
         current_path.clone()
     };
@@ -129,6 +138,10 @@ fn render_pane(frame: &mut Frame, app: &mut App, pane_id: &str, area: Rect) {
     frame.render_widget(block, area);
 
     if inner.height < 2 {
+        app.pane_views.insert(
+            pane_id.to_string(),
+            PaneView { area, list_area: Rect::default() },
+        );
         return;
     }
 
@@ -145,6 +158,8 @@ fn render_pane(frame: &mut Frame, app: &mut App, pane_id: &str, area: Rect) {
         width: inner.width,
         height: inner.height - 1,
     };
+
+    app.pane_views.insert(pane_id.to_string(), PaneView { area, list_area });
 
     render_column_header(frame, app, header_area);
     render_file_list(frame, app, pane_id, list_area);
@@ -312,7 +327,8 @@ fn render_status_bar(frame: &mut Frame, app: &App, area: Rect) {
     let left = parts.join(" │ ");
 
     let mode_hint = match &app.mode {
-        AppMode::Normal => "q:quit │:split W:close Tab:pane /:search f:fav F5:refresh",
+        AppMode::Normal => "?:help q:quit │:split W:close Tab:pane /:search f:fav",
+        AppMode::Help => "Esc/q/?:close",
         AppMode::Search { .. } => "Esc:cancel  Enter:confirm",
         AppMode::Rename { .. } => "Esc:cancel  Enter:rename",
         AppMode::Confirm { .. } => "←→:select  Enter:confirm  y/n  Esc:cancel",
@@ -422,6 +438,117 @@ fn render_favorites_dialog(frame: &mut Frame, area: Rect, favorites: &[String], 
 
     let text = Paragraph::new(lines);
     frame.render_widget(text, inner);
+}
+
+fn help_lines(sections: &[(&str, &[(&str, &str)])]) -> Vec<Line<'static>> {
+    let mut lines = Vec::new();
+    for (i, (title, items)) in sections.iter().enumerate() {
+        if i > 0 {
+            lines.push(Line::from(""));
+        }
+        lines.push(Line::from(Span::styled(
+            format!(" {}", title),
+            Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+        )));
+        for (key, desc) in items.iter() {
+            lines.push(Line::from(vec![
+                Span::styled(format!("  {:<12}", key), Style::default().fg(Color::Cyan)),
+                Span::styled((*desc).to_string(), Style::default().fg(Color::White)),
+            ]));
+        }
+    }
+    lines
+}
+
+fn render_help_dialog(frame: &mut Frame, area: Rect) {
+    let left = help_lines(&[
+        (
+            "Navigation",
+            &[
+                ("j/k ↑/↓", "move focus"),
+                ("Enter", "open / enter folder"),
+                ("Bksp", "up one directory"),
+                ("~ / Home", "go to home"),
+                ("g / G", "jump to top / bottom"),
+                ("PgUp/PgDn", "page up / down"),
+                ("Tab", "next pane"),
+                ("e", "edit path / favorites"),
+                ("f", "toggle favorite"),
+            ],
+        ),
+        (
+            "Panes",
+            &[
+                ("|", "split vertical"),
+                ("-", "split horizontal"),
+                ("W", "close pane"),
+            ],
+        ),
+        (
+            "Selection",
+            &[
+                ("Shift+j/k", "extend selection"),
+                ("Ctrl+a", "select all"),
+                ("Esc", "clear selection"),
+            ],
+        ),
+    ]);
+
+    let right = help_lines(&[
+        (
+            "Files",
+            &[
+                ("y / x", "copy / cut"),
+                ("p, Ctrl+v", "paste"),
+                ("r / F2", "rename"),
+                ("d / Del", "delete (trash)"),
+                ("n / N", "new file / folder"),
+                ("o", "open in default app"),
+                ("t", "open in terminal"),
+            ],
+        ),
+        (
+            "View",
+            &[
+                ("/, Ctrl+f", "search"),
+                ("s / S", "sort field / direction"),
+                (".", "show hidden files"),
+                ("F5", "refresh"),
+            ],
+        ),
+        (
+            "Mouse",
+            &[
+                ("wheel", "scroll pane at cursor"),
+                ("click", "focus pane / select row"),
+            ],
+        ),
+        ("Other", &[("?", "toggle this help"), ("q", "quit")]),
+    ]);
+
+    let content_height = left.len().max(right.len()) as u16 + 2;
+    let height = content_height.min(area.height.saturating_sub(2));
+    let width = 74u16.min(area.width.saturating_sub(4));
+    let dialog = Rect::new(
+        area.x + area.width.saturating_sub(width) / 2,
+        area.y + area.height.saturating_sub(height) / 2,
+        width,
+        height,
+    );
+    frame.render_widget(Clear, dialog);
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::Cyan))
+        .title(" Keyboard Shortcuts ");
+    let inner = block.inner(dialog);
+    frame.render_widget(block, dialog);
+
+    let cols = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+        .split(inner);
+    frame.render_widget(Paragraph::new(left), cols[0]);
+    frame.render_widget(Paragraph::new(right), cols[1]);
 }
 
 fn centered_rect(percent_x: u16, height: u16, area: Rect) -> Rect {

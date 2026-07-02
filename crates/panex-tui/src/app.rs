@@ -1,5 +1,6 @@
 use panex_core::FileEntry;
 use panex_core::config::PanexConfig;
+use ratatui::layout::Rect;
 use ratatui::widgets::TableState;
 use std::collections::{HashMap, HashSet};
 
@@ -28,9 +29,18 @@ impl PaneState {
     }
 }
 
+/// Screen regions of a pane from the last render, used for mouse hit-testing
+/// and page-size calculations.
+#[derive(Clone, Copy, Default)]
+pub struct PaneView {
+    pub area: Rect,
+    pub list_area: Rect,
+}
+
 #[derive(PartialEq)]
 pub enum AppMode {
     Normal,
+    Help,
     Search { pane_id: String },
     Rename {
         pane_id: String,
@@ -97,6 +107,7 @@ pub struct App {
     pub sort_direction: SortDirection,
     pub file_clipboard: Option<FileClipboard>,
     pub raw_entries_map: HashMap<String, Vec<FileEntry>>,
+    pub pane_views: HashMap<String, PaneView>,
     pub mode: AppMode,
     pub status_message: Option<String>,
     pub status_message_at: Option<std::time::Instant>,
@@ -138,6 +149,7 @@ impl App {
             sort_direction: SortDirection::Asc,
             file_clipboard: None,
             raw_entries_map,
+            pane_views: HashMap::new(),
             mode: AppMode::Normal,
             status_message: None,
             status_message_at: None,
