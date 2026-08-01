@@ -14,6 +14,10 @@ pub struct PaneState {
     pub focus_index: i32,
     pub search_query: String,
     pub table_state: TableState,
+    /// Size level on each axis: -1 smaller, 0 default, +1 larger. Tracked per
+    /// axis because a sibling can reclaim one axis without touching the other.
+    pub width_level: i8,
+    pub height_level: i8,
 }
 
 impl PaneState {
@@ -25,6 +29,8 @@ impl PaneState {
             focus_index: 0,
             search_query: String::new(),
             table_state: TableState::default().with_selected(Some(0)),
+            width_level: 0,
+            height_level: 0,
         }
     }
 }

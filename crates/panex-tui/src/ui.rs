@@ -327,7 +327,7 @@ fn render_status_bar(frame: &mut Frame, app: &App, area: Rect) {
     let left = parts.join(" │ ");
 
     let mode_hint = match &app.mode {
-        AppMode::Normal => "?:help q:quit │:split W:close Tab:pane /:search f:fav",
+        AppMode::Normal => "?:help q:quit |_:split +-:size W:close /:search f:fav",
         AppMode::Help => "Esc/q/?:close",
         AppMode::Search { .. } => "Esc:cancel  Enter:confirm",
         AppMode::Rename { .. } => "Esc:cancel  Enter:rename",
@@ -480,7 +480,9 @@ fn render_help_dialog(frame: &mut Frame, area: Rect) {
             "Panes",
             &[
                 ("|", "split vertical"),
-                ("-", "split horizontal"),
+                ("_", "split horizontal"),
+                ("+ / =", "grow pane 25%"),
+                ("-", "shrink pane 25%"),
                 ("W", "close pane"),
             ],
         ),

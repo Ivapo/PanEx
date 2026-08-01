@@ -66,9 +66,13 @@ fn handle_normal(app: &mut App, key: KeyEvent) {
 
         // Pane management
         KeyCode::Char('|') => split_active_pane(app, SplitDirection::Vertical),
-        KeyCode::Char('-') if !ctrl => split_active_pane(app, SplitDirection::Horizontal),
+        KeyCode::Char('_') => split_active_pane(app, SplitDirection::Horizontal),
         KeyCode::Char('W') => close_active_pane(app),
         KeyCode::Tab => cycle_pane(app),
+
+        // Pane size — '=' is the unshifted twin of '+'
+        KeyCode::Char('+') | KeyCode::Char('=') if !ctrl => resize_active_pane(app, 1),
+        KeyCode::Char('-') if !ctrl => resize_active_pane(app, -1),
 
         // File operations
         KeyCode::Char('y') => copy_to_clipboard(app, ClipMode::Copy),
@@ -892,6 +896,64 @@ fn split_active_pane(app: &mut App, direction: SplitDirection) {
         }
     }
     app.pane_map.insert(new_id, new_pane);
+}
+
+/// Grow (`delta` = 1) or shrink (`delta` = -1) the active pane by 25% on both
+/// axes, clamped to one step either side of the default. Each axis moves its
+/// nearest ancestor split, so an axis with no split simply doesn't move —
+/// a pane in a left/right split only changes width.
+fn resize_active_pane(app: &mut App, delta: i8) {
+    let pane_id = app.active_pane_id.clone();
+    let Some(pane) = app.pane_map.get(&pane_id) else {
+        return;
+    };
+    let (old_w, old_h) = (pane.width_level, pane.height_level);
+    let new_w = (old_w + delta).clamp(-1, 1);
+    let new_h = (old_h + delta).clamp(-1, 1);
+
+    let axes = [
+        (SplitDirection::Vertical, new_w, old_w),
+        (SplitDirection::Horizontal, new_h, old_h),
+    ];
+
+    let mut resized_any = false;
+    let mut moved_any = false;
+
+    for (direction, new_level, old_level) in axes {
+        let is_width = direction == SplitDirection::Vertical;
+        let Some(affected) =
+            layout::resize_axis(&mut app.layout_root, &pane_id, direction, new_level)
+        else {
+            continue;
+        };
+        resized_any = true;
+        moved_any |= new_level != old_level;
+
+        // Everyone sharing the boundary we just moved loses their claim on it.
+        for id in affected {
+            if let Some(p) = app.pane_map.get_mut(&id) {
+                if is_width {
+                    p.width_level = 0;
+                } else {
+                    p.height_level = 0;
+                }
+            }
+        }
+        if let Some(p) = app.pane_map.get_mut(&pane_id) {
+            if is_width {
+                p.width_level = new_level;
+            } else {
+                p.height_level = new_level;
+            }
+        }
+    }
+
+    if !resized_any {
+        app.set_status("No split to resize — split first with | or _".to_string());
+    } else if !moved_any {
+        let edge = if delta > 0 { "largest" } else { "smallest" };
+        app.set_status(format!("Pane already at its {} size", edge));
+    }
 }
 
 fn close_active_pane(app: &mut App) {

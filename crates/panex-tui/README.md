@@ -22,7 +22,8 @@ cd ~/Projects && panex
 
 ## Features
 
-- Multi-pane layout — split vertically (`|`) or horizontally (`-`), close with `W`
+- Multi-pane layout — split vertically (`|`) or horizontally (`_`), close with `W`
+- Resizable panes — `+` grows the active pane by 25%, `-` shrinks it
 - Keyboard-driven navigation with vim-style keys (`j`/`k`) or arrow keys
 - File operations: copy (`y`), cut (`x`), paste (`p`), rename (`r`/`F2`), delete (`d`)
 - Delete confirmation dialog with arrow key selection
@@ -51,7 +52,9 @@ cd ~/Projects && panex
 | `~` | Go to home directory |
 | `Tab` | Switch pane |
 | `\|` | Split pane vertically |
-| `-` | Split pane horizontally |
+| `_` | Split pane horizontally |
+| `+` or `=` | Grow active pane by 25% (one step only) |
+| `-` | Shrink active pane by 25% (one step only) |
 | `W` | Close pane |
 | `y` | Copy |
 | `x` | Cut |
