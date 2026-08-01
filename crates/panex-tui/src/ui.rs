@@ -12,6 +12,9 @@ use crate::sort::SortField;
 const ACCENT: Color = Color::Rgb(255, 191, 0);
 /// Padded so a status line clipped at the column edge can't butt up against it.
 const BRAND: &str = "  panex ";
+/// Scroll thumb glyph. Half-width so it reads lighter than the full block
+/// while staying distinct from the `│` border it is drawn over.
+const SCROLL_THUMB: &str = "▐";
 
 pub fn draw(frame: &mut Frame, app: &mut App) {
     let area = frame.area();
@@ -306,8 +309,67 @@ fn render_file_list(frame: &mut Frame, app: &mut App, pane_id: &str, area: Rect)
 
     let table = Table::new(rows, widths).column_spacing(1);
 
+    let len = pane.entries.len();
+    let viewport = area.height as usize;
     frame.render_stateful_widget(table, area, &mut pane.table_state);
+
+    // Scroll indicator on the pane's right border. Read the offset *after*
+    // rendering — the table adjusts it to keep the selected row visible.
+    render_scroll_thumb(
+        frame,
+        Rect {
+            x: area.x + area.width,
+            y: area.y,
+            width: 1,
+            height: area.height,
+        },
+        len,
+        viewport,
+        pane.table_state.offset(),
+    );
 }
+
+/// Draws a scroll thumb over `area` (one column, spanning the list rows).
+///
+/// Hand-rolled rather than `ratatui::Scrollbar`, which rounds the thumb's
+/// start and end independently and so visibly changes the thumb's length by a
+/// cell as you scroll. Here the length is computed once and only the position
+/// moves, so the thumb sits flush at both ends and never resizes mid-scroll.
+fn render_scroll_thumb(
+    frame: &mut Frame,
+    area: Rect,
+    len: usize,
+    viewport: usize,
+    offset: usize,
+) {
+    let track = area.height as usize;
+    // Nothing to indicate when everything already fits.
+    if track == 0 || viewport == 0 || len <= viewport {
+        return;
+    }
+
+    // Length is proportional to the visible fraction, fixed for a given list.
+    let thumb = (track * viewport / len).clamp(1, track);
+    let travel = track - thumb;
+    let max_offset = len - viewport;
+    // Round to nearest so the thumb lands flush at the top and the bottom.
+    let start = (offset.min(max_offset) * travel + max_offset / 2) / max_offset;
+
+    let style = Style::default().fg(Color::DarkGray);
+    let buf = frame.buffer_mut();
+    for i in start..start + thumb {
+        let y = area.y + i as u16;
+        if y >= area.y + area.height {
+            break;
+        }
+        // `cell_mut` returns None off-buffer — a pane squeezed to the screen
+        // edge can put this column out of range, and indexing would panic.
+        if let Some(cell) = buf.cell_mut((area.x, y)) {
+            cell.set_symbol(SCROLL_THUMB).set_style(style);
+        }
+    }
+}
+
 
 fn render_status_bar(frame: &mut Frame, app: &App, area: Rect) {
     let pane = app.pane_map.get(&app.active_pane_id);
@@ -724,5 +786,183 @@ mod tests {
         assert!(after > before, "divider should move right: {before} -> {after}");
         assert_eq!(before, 40);
         assert_eq!(after, 50, "0.625 of 80 columns");
+    }
+}
+
+#[cfg(test)]
+mod scrollbar_tests {
+    use super::*;
+    use ratatui::backend::TestBackend;
+    use ratatui::Terminal;
+
+    fn app_with_entries(count: usize) -> (App, String) {
+        let mut app = App::new().unwrap();
+        let id = app.active_pane_id.clone();
+        let entries = (0..count)
+            .map(|i| panex_core::FileEntry {
+                name: format!("file-{i:02}.txt"),
+                path: format!("/x/file-{i:02}.txt"),
+                is_dir: false,
+                size: 1024,
+                modified: 1_700_000_000,
+            })
+            .collect();
+        app.pane_map.get_mut(&id).unwrap().entries = entries;
+        (app, id)
+    }
+
+    /// Rows of the pane's right border column, top to bottom.
+    fn right_border(app: &mut App, w: u16, h: u16) -> Vec<String> {
+        let mut terminal = Terminal::new(TestBackend::new(w, h)).unwrap();
+        terminal.draw(|frame| draw(frame, app)).unwrap();
+        let buf = terminal.backend().buffer().clone();
+        (0..buf.area.height)
+            .map(|y| buf[(w - 1, y)].symbol().to_string())
+            .collect()
+    }
+
+    fn thumb_rows(border: &[String]) -> Vec<usize> {
+        border
+            .iter()
+            .enumerate()
+            .filter(|(_, s)| s.as_str() == SCROLL_THUMB)
+            .map(|(i, _)| i)
+            .collect()
+    }
+
+    /// A list that fits needs no indicator — the border stays unbroken.
+    #[test]
+    fn no_scrollbar_when_list_fits() {
+        let (mut app, _) = app_with_entries(3);
+        let border = right_border(&mut app, 46, 14);
+        assert!(
+            thumb_rows(&border).is_empty(),
+            "expected no thumb, got {border:?}"
+        );
+    }
+
+    /// The thumb must keep one length for the whole scroll — `ratatui`'s own
+    /// Scrollbar rounds start and end separately and visibly jitters by a cell.
+    #[test]
+    fn thumb_length_is_constant_at_every_offset() {
+        for (count, w, h) in [(40usize, 46u16, 14u16), (13, 46, 14), (500, 46, 24), (41, 60, 40)] {
+            let (mut app, id) = app_with_entries(count);
+            let viewport = (h - 4) as usize; // borders + header + status row
+            let max_offset = count - viewport;
+
+            let lengths: Vec<usize> = (0..=max_offset)
+                .map(|offset| {
+                    let pane = app.pane_map.get_mut(&id).unwrap();
+                    pane.focus_index = offset as i32;
+                    pane.table_state.select(Some(offset));
+                    *pane.table_state.offset_mut() = offset;
+                    thumb_rows(&right_border(&mut app, w, h)).len()
+                })
+                .collect();
+
+            let first = lengths[0];
+            assert!(
+                lengths.iter().all(|&l| l == first),
+                "thumb resized while scrolling {count} items in a {viewport}-row viewport: {lengths:?}"
+            );
+            assert!(first >= 1);
+        }
+    }
+
+    /// Flush at the top when at the top, flush at the bottom when at the bottom.
+    #[test]
+    fn thumb_reaches_both_ends_of_the_track() {
+        let (mut app, id) = app_with_entries(40);
+        let viewport = 10; // 14 rows - 2 borders - 1 header - 1 status
+        let set = |app: &mut App, offset: usize| {
+            let pane = app.pane_map.get_mut(&id).unwrap();
+            pane.focus_index = offset as i32;
+            pane.table_state.select(Some(offset));
+            *pane.table_state.offset_mut() = offset;
+            thumb_rows(&right_border(app, 46, 14))
+        };
+
+        // Row 0 is the top border; list rows start at row 2 and run 10 deep.
+        let top = set(&mut app, 0);
+        assert_eq!(*top.first().unwrap(), 2, "thumb should start at the first list row");
+
+        let bottom = set(&mut app, 40 - viewport);
+        assert_eq!(*bottom.last().unwrap(), 11, "thumb should end at the last list row");
+    }
+
+    /// The thumb tracks the scroll offset down the pane.
+    #[test]
+    fn thumb_follows_scroll_offset() {
+        let (mut app, id) = app_with_entries(40);
+
+        let at_offset = |app: &mut App, offset: usize| {
+            let pane = app.pane_map.get_mut(&id).unwrap();
+            pane.focus_index = offset as i32;
+            pane.table_state.select(Some(offset));
+            *pane.table_state.offset_mut() = offset;
+            thumb_rows(&right_border(app, 46, 14))
+        };
+
+        let top = at_offset(&mut app, 0);
+        let middle = at_offset(&mut app, 15);
+        let bottom = at_offset(&mut app, 30);
+
+        assert!(!top.is_empty() && !middle.is_empty() && !bottom.is_empty());
+        assert!(top[0] < middle[0], "thumb should descend: {top:?} {middle:?}");
+        assert!(middle[0] < bottom[0], "thumb should descend: {middle:?} {bottom:?}");
+
+        // Never drawn over the pane's corners.
+        let border = right_border(&mut app, 46, 14);
+        assert_eq!(border[0], "┐", "top corner intact");
+        assert_eq!(border[12], "┘", "bottom corner intact");
+    }
+}
+
+#[cfg(test)]
+mod panic_probe {
+    use super::*;
+    use crate::layout::split_pane;
+    use ratatui::backend::TestBackend;
+    use ratatui::Terminal;
+
+    #[test]
+    fn no_panic_at_any_size() {
+        let mut fails: Vec<(u16, u16)> = Vec::new();
+        for w in 1..=60u16 {
+            for h in 1..=25u16 {
+                let mut app = App::new().unwrap();
+                let id = app.active_pane_id.clone();
+                let entries: Vec<panex_core::FileEntry> = (0..60)
+                    .map(|i| panex_core::FileEntry {
+                        name: format!("file-{i:02}.txt"),
+                        path: format!("/x/{i}"),
+                        is_dir: false,
+                        size: 1,
+                        modified: 1_700_000_000,
+                    })
+                    .collect();
+                app.pane_map.get_mut(&id).unwrap().entries = entries.clone();
+                for (n, dir) in [
+                    (1u32, SplitDirection::Vertical),
+                    (2, SplitDirection::Horizontal),
+                    (3, SplitDirection::Vertical),
+                ] {
+                    let nid = format!("p{n}");
+                    app.layout_root = split_pane(&app.layout_root, &id, &nid, dir);
+                    let mut st = crate::app::PaneState::new("/x");
+                    st.entries = entries.clone();
+                    app.pane_map.insert(nid, st);
+                }
+                let mut t = Terminal::new(TestBackend::new(w, h)).unwrap();
+                let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    t.draw(|f| draw(f, &mut app)).unwrap();
+                }));
+                if r.is_err() {
+                    fails.push((w, h));
+                }
+            }
+        }
+        println!("FAILCOUNT={} sizes={:?}", fails.len(), &fails[..fails.len().min(30)]);
+        assert!(fails.is_empty(), "panics at {} terminal sizes", fails.len());
     }
 }
