@@ -223,14 +223,12 @@ pub fn calculate_directory_size(path: &str) -> Result<u64, String> {
     fn walk(dir: &Path) -> u64 {
         let mut total: u64 = 0;
         if let Ok(entries) = fs::read_dir(dir) {
-            for entry in entries {
-                if let Ok(entry) = entry {
-                    if let Ok(meta) = entry.metadata() {
-                        if meta.is_dir() {
-                            total += walk(&entry.path());
-                        } else {
-                            total += disk_size(&meta);
-                        }
+            for entry in entries.flatten() {
+                if let Ok(meta) = entry.metadata() {
+                    if meta.is_dir() {
+                        total += walk(&entry.path());
+                    } else {
+                        total += disk_size(&meta);
                     }
                 }
             }
@@ -445,7 +443,7 @@ pub fn move_entry(source: &str, dest_dir: &str) -> Result<String, String> {
 
     // Try fast rename first (works on same volume)
     match fs::rename(&src, &dest_path) {
-        Ok(()) => return Ok(dest_path.to_string_lossy().to_string()),
+        Ok(()) => Ok(dest_path.to_string_lossy().to_string()),
         Err(_) => {
             // Cross-volume: copy then delete
             copy_entry(source, dest_dir)?;

@@ -148,8 +148,8 @@ fn handle_normal(app: &mut App, key: KeyEvent) {
                 .map(|p| p.current_path.clone())
                 .unwrap_or_default();
             match app.config.toggle_favorite(&current_path) {
-                Ok(true) => app.set_status(format!("★ Added to favorites")),
-                Ok(false) => app.set_status(format!("☆ Removed from favorites")),
+                Ok(true) => app.set_status("★ Added to favorites".to_string()),
+                Ok(false) => app.set_status("☆ Removed from favorites".to_string()),
                 Err(e) => app.set_status(format!("Favorite error: {}", e)),
             }
         }
@@ -347,9 +347,7 @@ fn handle_rename(app: &mut App, key: KeyEvent) {
             };
         }
         KeyCode::Left => {
-            if cursor > 0 {
-                cursor -= 1;
-            }
+            cursor = cursor.saturating_sub(1);
             app.mode = AppMode::Rename {
                 pane_id,
                 path,
@@ -492,9 +490,7 @@ fn handle_prompt(app: &mut App, key: KeyEvent) {
             };
         }
         KeyCode::Left => {
-            if cursor > 0 {
-                cursor -= 1;
-            }
+            cursor = cursor.saturating_sub(1);
             app.mode = AppMode::Prompt {
                 title,
                 input,
@@ -582,7 +578,7 @@ fn compute_completions(input: &str, home_path: &str) -> (String, Vec<String>) {
             }
         }
     }
-    matches.sort_by(|a, b| a.to_lowercase().cmp(&b.to_lowercase()));
+    matches.sort_by_key(|a| a.to_lowercase());
     (prefix, matches)
 }
 
@@ -679,9 +675,7 @@ fn handle_path_edit(app: &mut App, key: KeyEvent) {
             }
         }
         KeyCode::Left => {
-            if cursor > 0 {
-                cursor -= 1;
-            }
+            cursor = cursor.saturating_sub(1);
             path_edit_set(app, pane_id, input, cursor);
         }
         KeyCode::Right => {
