@@ -15,7 +15,54 @@ use crossterm::terminal::{
 use ratatui::backend::CrosstermBackend;
 use ratatui::Terminal;
 
+fn print_help() {
+    println!(
+        "panex {version}
+A multi-pane terminal file explorer.
+
+USAGE:
+    panex [OPTIONS]
+
+OPTIONS:
+    -h, -H, --help       Print this help
+    -V, -v, --version    Print version
+
+CONFIG:
+    ~/.panex/config.toml — favorites, and per-extension openers
+    under [open.tui], e.g. \".md\" = \"nvim\".
+
+Opens in the current directory. Press ? inside the app for keyboard shortcuts.",
+        version = env!("CARGO_PKG_VERSION"),
+    );
+}
+
+/// Handles `--help`/`--version` and rejects anything else. The app takes no
+/// arguments, so whatever comes first is terminal either way — every branch
+/// exits the process. Must run before the terminal is put into raw mode.
+fn parse_args() {
+    let Some(arg) = std::env::args().nth(1) else {
+        return;
+    };
+    match arg.as_str() {
+        "-h" | "-H" | "--help" => {
+            print_help();
+            std::process::exit(0);
+        }
+        "-V" | "-v" | "--version" => {
+            println!("panex {}", env!("CARGO_PKG_VERSION"));
+            std::process::exit(0);
+        }
+        other => {
+            eprintln!("panex: unrecognized argument '{other}'");
+            eprintln!("Try 'panex --help' for usage.");
+            std::process::exit(2);
+        }
+    }
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    parse_args();
+
     // Setup terminal
     enable_raw_mode()?;
     let mut stdout = io::stdout();

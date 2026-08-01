@@ -18,6 +18,9 @@ panex
 
 # Open in a specific directory
 cd ~/Projects && panex
+
+panex --help      # usage
+panex --version   # version
 ```
 
 ## Features
