@@ -60,8 +60,27 @@ fn parse_args() {
     }
 }
 
+/// Put the terminal back the way we found it. Safe to call more than once.
+fn restore_terminal() {
+    let _ = disable_raw_mode();
+    let _ = execute!(io::stdout(), DisableMouseCapture, LeaveAlternateScreen);
+    let _ = execute!(io::stdout(), crossterm::cursor::Show);
+}
+
+/// Without this, a panic unwinds straight past the cleanup at the end of
+/// `main`, leaving the user on the alternate screen in raw mode — the shell
+/// looks dead and the panic message is never seen.
+fn install_panic_hook() {
+    let default_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        restore_terminal();
+        default_hook(info);
+    }));
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     parse_args();
+    install_panic_hook();
 
     // Setup terminal
     enable_raw_mode()?;
