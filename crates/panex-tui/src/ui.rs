@@ -370,7 +370,6 @@ fn render_scroll_thumb(
     }
 }
 
-
 fn render_status_bar(frame: &mut Frame, app: &App, area: Rect) {
     let pane = app.pane_map.get(&app.active_pane_id);
     let item_count = pane.map(|p| p.entries.len()).unwrap_or(0);
