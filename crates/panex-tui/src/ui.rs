@@ -8,6 +8,11 @@ use crate::app::{App, AppMode, PaneView};
 use crate::layout::{LayoutNode, SplitDirection};
 use crate::sort::SortField;
 
+/// Amber accent — folder icons and the footer brand.
+const ACCENT: Color = Color::Rgb(255, 191, 0);
+/// Padded so a status line clipped at the column edge can't butt up against it.
+const BRAND: &str = "  panex ";
+
 pub fn draw(frame: &mut Frame, app: &mut App) {
     let area = frame.area();
 
@@ -224,7 +229,7 @@ fn render_file_list(frame: &mut Frame, app: &mut App, pane_id: &str, area: Rect)
         .enumerate()
         .map(|(i, entry)| {
             let icon = if entry.is_dir { "\u{f07b}" } else { "\u{f016}" };
-            let icon_color = if entry.is_dir { Color::Rgb(255, 191, 0) } else { Color::DarkGray };
+            let icon_color = if entry.is_dir { ACCENT } else { Color::DarkGray };
 
             let ext = if entry.is_dir {
                 String::new()
@@ -337,21 +342,34 @@ fn render_status_bar(frame: &mut Frame, app: &App, area: Rect) {
         AppMode::FavoritesList { .. } => "↑↓:select  Enter:go  e:edit path  d:remove  Esc:cancel",
     };
 
-    if let Some(msg) = &app.status_message {
-        let line = Line::from(vec![
-            Span::styled(msg.as_str(), Style::default().fg(Color::Yellow)),
+    let line = match &app.status_message {
+        Some(msg) => Line::from(vec![
+            Span::styled(msg.clone(), Style::default().fg(Color::Yellow)),
             Span::raw("  "),
             Span::styled(mode_hint, Style::default().fg(Color::DarkGray)),
-        ]);
-        frame.render_widget(Paragraph::new(line), area);
-    } else {
-        let line = Line::from(vec![
+        ]),
+        None => Line::from(vec![
             Span::styled(left, Style::default().fg(Color::DarkGray)),
             Span::raw("  "),
             Span::styled(mode_hint, Style::default().fg(Color::DarkGray)),
-        ]);
-        frame.render_widget(Paragraph::new(line), area);
-    }
+        ]),
+    };
+
+    // Split the row so a long status line is clipped rather than running
+    // under the brand.
+    let cols = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Min(0),
+            Constraint::Length(BRAND.chars().count() as u16),
+        ])
+        .split(area);
+
+    frame.render_widget(Paragraph::new(line), cols[0]);
+    frame.render_widget(
+        Paragraph::new(BRAND).style(Style::default().fg(ACCENT).add_modifier(Modifier::BOLD)),
+        cols[1],
+    );
 }
 
 fn render_confirm_dialog(frame: &mut Frame, area: Rect, title: &str, message: &str, selected: usize) {
@@ -616,4 +634,95 @@ fn format_date(timestamp: u64) -> String {
 
 fn is_leap(y: i32) -> bool {
     (y % 4 == 0 && y % 100 != 0) || y % 400 == 0
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::layout::resize_axis;
+    use ratatui::backend::TestBackend;
+    use ratatui::Terminal;
+
+    fn render(app: &mut App, width: u16, height: u16) -> String {
+        let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
+        terminal.draw(|frame| draw(frame, app)).unwrap();
+        let buffer = terminal.backend().buffer().clone();
+        (0..buffer.area.height)
+            .map(|y| {
+                (0..buffer.area.width)
+                    .map(|x| buffer[(x, y)].symbol())
+                    .collect::<String>()
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    fn footer(screen: &str) -> String {
+        screen.lines().last().unwrap().to_string()
+    }
+
+    #[test]
+    fn brand_sits_at_the_right_edge_of_the_footer() {
+        let mut app = App::new().unwrap();
+        let screen = render(&mut app, 80, 20);
+        let last = footer(&screen);
+        assert!(
+            last.trim_end().ends_with("panex"),
+            "footer should end with the brand, got: {last:?}"
+        );
+    }
+
+    /// A status message long enough to reach the brand must be clipped by the
+    /// layout column instead of overwriting it.
+    #[test]
+    fn long_status_does_not_run_under_the_brand() {
+        let mut app = App::new().unwrap();
+        app.set_status("x".repeat(200));
+        let last = footer(&render(&mut app, 80, 20));
+        assert!(
+            last.trim_end().ends_with("panex"),
+            "brand should survive a long status, got: {last:?}"
+        );
+        assert_eq!(last.len(), 80);
+    }
+
+    /// End-to-end: growing the left pane moves the divider right on screen.
+    #[test]
+    fn resize_widens_the_pane_on_screen() {
+        let mut app = App::new().unwrap();
+        let second = app.next_pane_id();
+        app.layout_root = crate::layout::split_pane(
+            &app.layout_root,
+            &app.active_pane_id.clone(),
+            &second,
+            SplitDirection::Vertical,
+        );
+        app.pane_map
+            .insert(second.clone(), crate::app::PaneState::new("/"));
+
+        let divider_x = |screen: &str| {
+            // Row 0 is the top border of both panes: "┌──…┐┌──…┐". The second
+            // '┌' marks where the right pane starts. Count chars, not bytes —
+            // box-drawing glyphs are 3 bytes each.
+            screen
+                .lines()
+                .next()
+                .unwrap()
+                .chars()
+                .enumerate()
+                .filter(|(_, c)| *c == '┌')
+                .nth(1)
+                .map(|(i, _)| i)
+        };
+
+        let before = divider_x(&render(&mut app, 80, 20)).unwrap();
+
+        resize_axis(&mut app.layout_root, &app.active_pane_id.clone(), SplitDirection::Vertical, 1)
+            .unwrap();
+        let after = divider_x(&render(&mut app, 80, 20)).unwrap();
+
+        assert!(after > before, "divider should move right: {before} -> {after}");
+        assert_eq!(before, 40);
+        assert_eq!(after, 50, "0.625 of 80 columns");
+    }
 }
