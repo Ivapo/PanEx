@@ -119,6 +119,10 @@ pub struct App {
     pub status_message_at: Option<std::time::Instant>,
     pub should_quit: bool,
     pub config: PanexConfig,
+    /// Pane, row and time of the last left click, so the next one can be
+    /// recognised as the second half of a double click. Crossterm reports
+    /// button presses only — pairing them is ours to do.
+    pub last_click: Option<(String, usize, std::time::Instant)>,
 }
 
 impl App {
@@ -161,6 +165,7 @@ impl App {
             status_message_at: None,
             should_quit: false,
             config,
+            last_click: None,
         })
     }
 

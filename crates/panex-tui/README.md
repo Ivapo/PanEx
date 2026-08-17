@@ -39,7 +39,7 @@ panex --version   # version
 - Open files in default app (`o`) or open directory in terminal (`t`)
 - Create new files (`n`) and folders (`N`)
 - Multi-select with `Shift+j`/`Shift+k`, select all with `Ctrl+a`
-- Mouse support — scroll the pane under the cursor, click to focus a pane / select a row
+- Mouse support — scroll the pane under the cursor, click to focus a pane / select a row, double-click to open
 - Built-in help overlay (`?`) with the full keybinding table
 - Auto-clearing status messages
 
@@ -80,7 +80,7 @@ panex --version   # version
 | `?` | Toggle help overlay |
 | `q` | Quit |
 
-Mouse: the scroll wheel scrolls the pane under the cursor; left click focuses a pane and selects the row under the cursor. (To select text in the terminal while PanEx is running, use `Shift`+drag / `Option`+drag as usual for mouse-capture apps.)
+Mouse: the scroll wheel scrolls the pane under the cursor; left click focuses a pane and selects the row under the cursor; double-click does what `Enter` does — enters a folder, opens a file. (To select text in the terminal while PanEx is running, use `Shift`+drag / `Option`+drag as usual for mouse-capture apps.)
 
 ## Configuration
 

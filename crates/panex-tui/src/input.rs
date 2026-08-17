@@ -1,8 +1,15 @@
+use std::time::{Duration, Instant};
+
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 
 use crate::app::{App, AppMode, ClipMode, ConfirmAction, FileClipboard, PromptAction};
 use crate::layout::{self, SplitDirection, collect_leaf_ids, count_leaves};
 use crate::sort::apply_sort_and_filter;
+
+/// How long after a click a second one on the same row still counts as a
+/// double click. Matches the macOS default; slower than this reads as two
+/// deliberate clicks, and a much longer window makes stray pairs open files.
+const DOUBLE_CLICK_WINDOW: Duration = Duration::from_millis(400);
 
 pub fn handle_key_event(app: &mut App, key: KeyEvent) {
     // Clear status message on any keypress
@@ -258,17 +265,61 @@ fn click_at(app: &mut App, x: u16, y: u16) -> bool {
         Some(v) => v.list_area,
         None => return changed,
     };
-    if y >= list.y && y < list.y + list.height {
-        if let Some(pane) = app.pane_map.get_mut(&pane_id) {
+    if y < list.y || y >= list.y + list.height {
+        return changed;
+    }
+
+    let idx = match app.pane_map.get_mut(&pane_id) {
+        Some(pane) => {
             let idx = pane.table_state.offset() + (y - list.y) as usize;
-            if idx < pane.entries.len() && pane.focus_index != idx as i32 {
+            if idx >= pane.entries.len() {
+                return changed;
+            }
+            if pane.focus_index != idx as i32 {
                 pane.focus_index = idx as i32;
                 pane.table_state.select(Some(idx));
                 changed = true;
             }
+            idx
         }
+        None => return changed,
+    };
+
+    // A second click on the same row within the window opens it, exactly as
+    // Enter does. Acting on that second click rather than waiting the window
+    // out keeps the single click instant — it only moves focus, so there is
+    // nothing to take back if the pair never completes.
+    let now = Instant::now();
+    if completes_double_click(app.last_click.as_ref(), &pane_id, idx, now) {
+        // Forget the pair before opening: the row under the cursor now belongs
+        // to a different directory, and a third click should start afresh
+        // rather than open whatever has scrolled into that position.
+        app.last_click = None;
+        open_focused(app);
+        return true;
     }
+
+    app.last_click = Some((pane_id, idx, now));
     changed
+}
+
+/// Whether this click is the second half of a double click. All three have to
+/// hold: same pane, same row, inside the window. Two clicks on neighbouring
+/// rows are two clicks, however fast — the user re-aimed between them.
+fn completes_double_click(
+    last: Option<&(String, usize, Instant)>,
+    pane_id: &str,
+    idx: usize,
+    now: Instant,
+) -> bool {
+    match last {
+        Some((last_pane, last_idx, at)) => {
+            last_pane == pane_id
+                && *last_idx == idx
+                && now.duration_since(*at) < DOUBLE_CLICK_WINDOW
+        }
+        None => false,
+    }
 }
 
 fn handle_search(app: &mut App, key: KeyEvent) {
@@ -1202,5 +1253,164 @@ fn refilter_all_panes(app: &mut App) {
     let pane_ids: Vec<String> = app.pane_map.keys().cloned().collect();
     for pid in pane_ids {
         app.refilter_pane(&pid);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn ago(ms: u64) -> Instant {
+        Instant::now() - Duration::from_millis(ms)
+    }
+
+    #[test]
+    fn pairs_two_quick_clicks_on_the_same_row() {
+        let last = ("pane-1".to_string(), 4, ago(100));
+        assert!(completes_double_click(
+            Some(&last),
+            "pane-1",
+            4,
+            Instant::now()
+        ));
+    }
+
+    #[test]
+    fn does_not_pair_across_the_window() {
+        let last = ("pane-1".to_string(), 4, ago(900));
+        assert!(!completes_double_click(
+            Some(&last),
+            "pane-1",
+            4,
+            Instant::now()
+        ));
+    }
+
+    /// Re-aiming at another row means the user meant two clicks, not one open.
+    #[test]
+    fn does_not_pair_across_rows() {
+        let last = ("pane-1".to_string(), 4, ago(50));
+        assert!(!completes_double_click(
+            Some(&last),
+            "pane-1",
+            5,
+            Instant::now()
+        ));
+    }
+
+    /// Nor across panes, where the first click was the one that focused it.
+    #[test]
+    fn does_not_pair_across_panes() {
+        let last = ("pane-1".to_string(), 4, ago(50));
+        assert!(!completes_double_click(
+            Some(&last),
+            "pane-2",
+            4,
+            Instant::now()
+        ));
+    }
+
+    #[test]
+    fn first_click_of_the_session_is_never_a_pair() {
+        assert!(!completes_double_click(None, "pane-1", 0, Instant::now()));
+    }
+}
+
+/// Drives real mouse events through the whole path — hit-test, focus, open —
+/// rather than just the pairing predicate above.
+#[cfg(test)]
+mod click_tests {
+    use super::*;
+    use ratatui::backend::TestBackend;
+    use ratatui::Terminal;
+    use std::path::PathBuf;
+
+    /// A directory under the system temp dir, removed when the test ends.
+    struct TempDir(PathBuf);
+
+    impl TempDir {
+        fn new(tag: &str) -> Self {
+            let path = std::env::temp_dir().join(format!("panex-{}-{}", tag, std::process::id()));
+            let _ = std::fs::remove_dir_all(&path);
+            std::fs::create_dir_all(&path).unwrap();
+            Self(path)
+        }
+    }
+
+    impl Drop for TempDir {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    /// A pane holding `tmp`, plus the screen position of its first row. The
+    /// render is what populates `pane_views`, which mouse hit-testing reads.
+    fn pane_showing(tmp: &TempDir) -> (App, String, u16, u16) {
+        let mut app = App::new().unwrap();
+        let pane_id = app.active_pane_id.clone();
+        app.navigate_to(&pane_id, &tmp.0.to_string_lossy());
+
+        let mut terminal = Terminal::new(TestBackend::new(80, 24)).unwrap();
+        terminal.draw(|frame| crate::ui::draw(frame, &mut app)).unwrap();
+        let view = app.pane_views[&pane_id];
+        let (x, y) = (view.list_area.x, view.list_area.y);
+        (app, pane_id, x, y)
+    }
+
+    fn click(app: &mut App, x: u16, y: u16) {
+        handle_mouse_event(
+            app,
+            MouseEvent {
+                kind: MouseEventKind::Down(MouseButton::Left),
+                column: x,
+                row: y,
+                modifiers: KeyModifiers::NONE,
+            },
+        );
+    }
+
+    #[test]
+    fn double_click_enters_the_folder_under_the_cursor() {
+        let tmp = TempDir::new("dbl");
+        std::fs::create_dir(tmp.0.join("sub")).unwrap();
+        let (mut app, pane_id, x, y) = pane_showing(&tmp);
+
+        click(&mut app, x, y);
+        click(&mut app, x, y);
+
+        assert_eq!(
+            app.pane_map[&pane_id].current_path,
+            tmp.0.join("sub").to_string_lossy()
+        );
+    }
+
+    #[test]
+    fn a_lone_click_only_moves_focus() {
+        let tmp = TempDir::new("single");
+        std::fs::create_dir(tmp.0.join("sub")).unwrap();
+        let (mut app, pane_id, x, y) = pane_showing(&tmp);
+
+        click(&mut app, x, y);
+
+        assert_eq!(app.pane_map[&pane_id].current_path, tmp.0.to_string_lossy());
+        assert_eq!(app.pane_map[&pane_id].focus_index, 0);
+    }
+
+    /// The window has to expire, or a click resting on a row from minutes ago
+    /// would open it.
+    #[test]
+    fn a_stale_first_click_does_not_pair() {
+        let tmp = TempDir::new("stale");
+        std::fs::create_dir(tmp.0.join("sub")).unwrap();
+        let (mut app, pane_id, x, y) = pane_showing(&tmp);
+
+        click(&mut app, x, y);
+        // Age the first click past the window without sleeping through it.
+        if let Some((_, _, at)) = app.last_click.as_mut() {
+            *at -= DOUBLE_CLICK_WINDOW * 2;
+        }
+        click(&mut app, x, y);
+
+        assert_eq!(app.pane_map[&pane_id].current_path, tmp.0.to_string_lossy());
     }
 }

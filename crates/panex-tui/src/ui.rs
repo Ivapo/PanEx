@@ -602,6 +602,7 @@ fn render_help_dialog(frame: &mut Frame, area: Rect) {
             &[
                 ("wheel", "scroll pane at cursor"),
                 ("click", "focus pane / select row"),
+                ("double-click", "open (same as Enter)"),
             ],
         ),
         ("Other", &[("?", "toggle this help"), ("q", "quit")]),
