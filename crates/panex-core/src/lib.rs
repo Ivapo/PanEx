@@ -292,7 +292,7 @@ pub fn open_in_terminal(path: &str) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
         std::process::Command::new("cmd")
-            .args(["/C", "start", "cmd", "/K", &format!("cd /d {}", path)])
+            .args(["/C", "start", "cmd", "/K", &format!("cd /d {}", cmd_quote(path))])
             .spawn()
             .map_err(|e| format!("Failed to open terminal: {}", e))?;
     }
@@ -330,12 +330,13 @@ pub fn open_in_terminal(path: &str) -> Result<(), String> {
 pub fn open_in_terminal_with_command(command: &str, args: &[&str]) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
-        // Build the full command string for the shell
-        let mut full_cmd = shell_escape(command);
-        for arg in args {
-            full_cmd.push(' ');
-            full_cmd.push_str(&shell_escape(arg));
-        }
+        let mut full_cmd = build_shell_command(command, args);
+        // Two quoting layers stack here: the shell that iTerm/Terminal feeds
+        // the line to, handled above, and the AppleScript string literal the
+        // line is embedded in, handled now. Escaping first would bury the
+        // AppleScript backslashes inside the shell quotes, where they are
+        // literal characters rather than escapes.
+        full_cmd = applescript_escape(&full_cmd);
 
         let app = if Path::new("/Applications/iTerm.app").exists() {
             "iTerm"
@@ -382,7 +383,7 @@ pub fn open_in_terminal_with_command(command: &str, args: &[&str]) -> Result<(),
         let mut full_cmd = command.to_string();
         for arg in args {
             full_cmd.push(' ');
-            full_cmd.push_str(arg);
+            full_cmd.push_str(&cmd_quote(arg));
         }
         std::process::Command::new("cmd")
             .args(["/C", "start", "cmd", "/K", &full_cmd])
@@ -392,21 +393,20 @@ pub fn open_in_terminal_with_command(command: &str, args: &[&str]) -> Result<(),
 
     #[cfg(target_os = "linux")]
     {
-        let mut full_cmd = command.to_string();
-        for arg in args {
-            full_cmd.push(' ');
-            full_cmd.push_str(arg);
-        }
+        let full_cmd = build_shell_command(command, args);
         let terminals = ["x-terminal-emulator", "gnome-terminal", "konsole", "xterm"];
         let mut launched = false;
         for term in &terminals {
+            // Every one of these passes the words after the separator to
+            // execvp, so `sh` has to be its own argument — folding it into one
+            // string asks the terminal to exec a program named "sh -c ...".
             let result = if *term == "gnome-terminal" {
                 std::process::Command::new(term)
                     .args(["--", "sh", "-c", &full_cmd])
                     .spawn()
             } else {
                 std::process::Command::new(term)
-                    .args(["-e", &format!("sh -c '{}'", full_cmd)])
+                    .args(["-e", "sh", "-c", &full_cmd])
                     .spawn()
             };
             if result.is_ok() {
@@ -422,8 +422,41 @@ pub fn open_in_terminal_with_command(command: &str, args: &[&str]) -> Result<(),
     Ok(())
 }
 
-fn shell_escape(s: &str) -> String {
+/// Quote one argument for a POSIX shell. Single quotes protect everything
+/// except a single quote itself, which has to be closed, escaped, and reopened.
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+fn shell_quote(s: &str) -> String {
+    format!("'{}'", s.replace('\'', r"'\''"))
+}
+
+/// Join a command and its arguments into one line for a POSIX shell.
+///
+/// `command` comes from the user's config (`[open.tui]`) and is passed through
+/// as a shell fragment, so an entry like `"nvim -R"` works as written. The
+/// arguments are paths we supply, so those are quoted.
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+fn build_shell_command(command: &str, args: &[&str]) -> String {
+    let mut line = command.to_string();
+    for arg in args {
+        line.push(' ');
+        line.push_str(&shell_quote(arg));
+    }
+    line
+}
+
+/// Make a finished command line safe inside an AppleScript string literal.
+/// This is the outer of the two quoting layers, not a substitute for the inner
+/// one — it says nothing about how a shell will later split the line.
+#[cfg(target_os = "macos")]
+fn applescript_escape(s: &str) -> String {
     s.replace('\\', "\\\\").replace('"', "\\\"")
+}
+
+/// Quote one argument for `cmd.exe`. Windows filenames cannot contain `"`, so
+/// wrapping is enough; the character is stripped rather than trusted.
+#[cfg(target_os = "windows")]
+fn cmd_quote(s: &str) -> String {
+    format!("\"{}\"", s.replace('"', ""))
 }
 
 pub fn move_entry(source: &str, dest_dir: &str) -> Result<String, String> {
@@ -456,5 +489,111 @@ pub fn move_entry(source: &str, dest_dir: &str) -> Result<String, String> {
             }
             Ok(dest_path.to_string_lossy().to_string())
         }
+    }
+}
+
+#[cfg(all(test, any(target_os = "macos", target_os = "linux")))]
+mod tests {
+    use super::*;
+
+    /// The bug in #1: a path with spaces reached the target program as many
+    /// arguments, because nothing ever quoted it for the shell.
+    #[test]
+    fn quotes_paths_containing_spaces() {
+        let line = build_shell_command("mdview", &["/Users/me/A stochastic delay model.md"]);
+        assert_eq!(line, "mdview '/Users/me/A stochastic delay model.md'");
+    }
+
+    /// An apostrophe has to close the quoting, escape itself, and reopen, or
+    /// the line ends mid-string and the shell waits for a terminator.
+    #[test]
+    fn quotes_paths_containing_apostrophes() {
+        assert_eq!(shell_quote("Ivan's notes.md"), r"'Ivan'\''s notes.md'");
+    }
+
+    /// Inside single quotes a backslash is a literal, so paths keep theirs.
+    #[test]
+    fn leaves_backslashes_alone_inside_shell_quotes() {
+        assert_eq!(shell_quote(r"a\b"), r"'a\b'");
+    }
+
+    #[test]
+    fn quotes_every_argument_separately() {
+        let line = build_shell_command("diff", &["/tmp/a b", "/tmp/c d"]);
+        assert_eq!(line, "diff '/tmp/a b' '/tmp/c d'");
+    }
+
+    /// The config value is the user's own shell fragment, so flags survive.
+    #[test]
+    fn passes_the_command_through_as_a_shell_fragment() {
+        let line = build_shell_command("nvim -R", &["/tmp/a b.md"]);
+        assert_eq!(line, "nvim -R '/tmp/a b.md'");
+    }
+
+    /// The assertions above say the line looks right. This one says a real
+    /// shell agrees, which is the property the bug was actually about: with
+    /// `printf '[%s]'`, one argument prints once and a split path prints once
+    /// per fragment.
+    fn one_argument_survives_a_real_shell(path: &str) {
+        let line = build_shell_command("printf '[%s]'", &[path]);
+        let out = std::process::Command::new("sh")
+            .args(["-c", &line])
+            .output()
+            .expect("failed to run sh");
+        assert_eq!(String::from_utf8_lossy(&out.stdout), format!("[{}]", path));
+    }
+
+    #[test]
+    fn spaced_path_reaches_the_program_as_one_argument() {
+        one_argument_survives_a_real_shell("/Users/me/A stochastic delay model.md");
+    }
+
+    #[test]
+    fn apostrophed_path_reaches_the_program_as_one_argument() {
+        one_argument_survives_a_real_shell("/Users/me/Ivan's notes.md");
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn escapes_applescript_metacharacters() {
+        assert_eq!(applescript_escape(r#"say "hi""#), r#"say \"hi\""#);
+        assert_eq!(applescript_escape(r"a\b"), r"a\\b");
+    }
+
+    /// Order matters: the shell quotes go on first, then the whole line is
+    /// escaped once for AppleScript. Backslashes in the path survive both.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn layers_shell_quoting_inside_applescript_escaping() {
+        let line = build_shell_command("hx", &[r"/tmp/a b\c"]);
+        assert_eq!(applescript_escape(&line), r"hx '/tmp/a b\\c'");
+    }
+
+    /// The outer layer against the real AppleScript parser rather than our
+    /// idea of it: what osascript hands back has to be the shell line we
+    /// built, character for character, or the shell sees something else.
+    #[cfg(target_os = "macos")]
+    fn survives_applescript(command: &str, path: &str) {
+        let line = build_shell_command(command, &[path]);
+        let script = format!("return \"{}\"", applescript_escape(&line));
+        let out = std::process::Command::new("osascript")
+            .args(["-e", &script])
+            .output()
+            .expect("failed to run osascript");
+        assert!(
+            out.status.success(),
+            "osascript rejected {script:?}: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        assert_eq!(String::from_utf8_lossy(&out.stdout).trim_end(), line);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn escaped_line_round_trips_through_applescript() {
+        survives_applescript("mdview", "/Users/me/A stochastic delay model.md");
+        survives_applescript("hx", "/tmp/Ivan's notes.md");
+        survives_applescript("hx", r"/tmp/a b\c");
+        survives_applescript("hx", "/tmp/a\"b");
     }
 }
