@@ -53,15 +53,15 @@ fn handle_normal(app: &mut App, key: KeyEvent) {
 
         // Navigation
         KeyCode::Up | KeyCode::Char('k') if shift => {
-            move_focus(app, -1);
+            move_focus(app, -1, Ends::Stop);
             toggle_selection_at_focus(app);
         }
         KeyCode::Down | KeyCode::Char('j') if shift => {
-            move_focus(app, 1);
+            move_focus(app, 1, Ends::Stop);
             toggle_selection_at_focus(app);
         }
-        KeyCode::Up | KeyCode::Char('k') => move_focus(app, -1),
-        KeyCode::Down | KeyCode::Char('j') => move_focus(app, 1),
+        KeyCode::Up | KeyCode::Char('k') => move_focus(app, -1, Ends::Wrap),
+        KeyCode::Down | KeyCode::Char('j') => move_focus(app, 1, Ends::Wrap),
         KeyCode::PageUp => page_move(app, -1),
         KeyCode::PageDown => page_move(app, 1),
         KeyCode::Char('g') => focus_to(app, 0),
@@ -220,8 +220,10 @@ fn move_oko_selection(app: &mut App, delta: i32) {
         .oko_selected
         .as_deref()
         .and_then(|id| rows.iter().position(|row| row.session_id == id));
+    // Wraps, as the file list does: a short list of tabs is a ring, and
+    // stopping at the last card only means pressing `k` six times to reach it.
     let next = match current {
-        Some(i) => (i as i32 + delta).clamp(0, rows.len() as i32 - 1) as usize,
+        Some(i) => (i as i32 + delta).rem_euclid(rows.len() as i32) as usize,
         None => 0,
     };
     app.oko_selected = Some(rows[next].session_id.clone());
@@ -994,13 +996,30 @@ fn handle_favorites_list(app: &mut App, key: KeyEvent) {
 
 // --- Helper functions ---
 
-fn move_focus(app: &mut App, delta: i32) {
+/// What the first and last row do to a step that would leave the list.
+#[derive(Clone, Copy, PartialEq)]
+enum Ends {
+    /// Stop there. What a page jump and an extended selection want: both are
+    /// aimed at a distance, and a wrap would land them somewhere else entirely.
+    Stop,
+    /// Past the last row is the first, and before the first is the last.
+    Wrap,
+}
+
+fn move_focus(app: &mut App, delta: i32, ends: Ends) {
     let pane_id = app.active_pane_id.clone();
     if let Some(pane) = app.pane_map.get_mut(&pane_id) {
         if pane.entries.is_empty() {
             return;
         }
-        let new_idx = (pane.focus_index + delta).clamp(0, pane.entries.len() as i32 - 1);
+        let len = pane.entries.len() as i32;
+        // Clamped first, because a focus that is out of range has no step to
+        // wrap from — a modulo of it would land anywhere.
+        let from = pane.focus_index.clamp(0, len - 1);
+        let new_idx = match ends {
+            Ends::Wrap => (from + delta).rem_euclid(len),
+            Ends::Stop => (from + delta).clamp(0, len - 1),
+        };
         pane.focus_index = new_idx;
         pane.table_state.select(Some(new_idx as usize));
     }
@@ -1025,7 +1044,7 @@ fn page_move(app: &mut App, dir: i32) {
         .map(|v| v.list_area.height as i32)
         .filter(|h| *h > 0)
         .unwrap_or(10);
-    move_focus(app, dir * page);
+    move_focus(app, dir * page, Ends::Stop);
 }
 
 fn toggle_selection_at_focus(app: &mut App) {
@@ -1626,6 +1645,63 @@ mod click_tests {
         assert_eq!(app.pane_map[&pane_id].focus_index, 0);
     }
 
+    /// `j` off the bottom lands on the first row, `k` off the top on the last.
+    /// The wrap is for the plain keys only — see the page/extend tests below.
+    #[test]
+    fn j_and_k_wrap_around_the_file_list() {
+        let tmp = TempDir::new("wrap");
+        for name in ["a", "b", "c"] {
+            std::fs::create_dir(tmp.0.join(name)).unwrap();
+        }
+        let (mut app, pane_id, _, _) = pane_showing(&tmp);
+        let focus = |app: &App| app.pane_map[&pane_id].focus_index;
+
+        press(&mut app, KeyCode::Char('k'));
+        assert_eq!(focus(&app), 2, "up from the first row is the last");
+        press(&mut app, KeyCode::Char('j'));
+        assert_eq!(focus(&app), 0, "down from the last row is the first");
+        press(&mut app, KeyCode::Down);
+        assert_eq!(focus(&app), 1, "arrows wrap the same way");
+    }
+
+    /// An extended selection is aimed at a distance, and wrapping it would
+    /// sweep the whole list into the selection on one keypress.
+    #[test]
+    fn shift_j_stops_at_the_end_instead_of_wrapping() {
+        let tmp = TempDir::new("nowrap");
+        for name in ["a", "b"] {
+            std::fs::create_dir(tmp.0.join(name)).unwrap();
+        }
+        let (mut app, pane_id, _, _) = pane_showing(&tmp);
+
+        for _ in 0..4 {
+            handle_key_event(
+                &mut app,
+                KeyEvent::new(KeyCode::Char('j'), KeyModifiers::SHIFT),
+            );
+        }
+
+        assert_eq!(app.pane_map[&pane_id].focus_index, 1, "should have stopped");
+    }
+
+    /// A page jump is aimed at a distance too — off the end it stops there.
+    #[test]
+    fn page_down_stops_at_the_last_row() {
+        let tmp = TempDir::new("page");
+        for name in ["a", "b", "c"] {
+            std::fs::create_dir(tmp.0.join(name)).unwrap();
+        }
+        let (mut app, pane_id, _, _) = pane_showing(&tmp);
+
+        press(&mut app, KeyCode::PageDown);
+
+        assert_eq!(app.pane_map[&pane_id].focus_index, 2);
+    }
+
+    fn press(app: &mut App, code: KeyCode) {
+        handle_key_event(app, KeyEvent::from(code));
+    }
+
     /// The window has to expire, or a click resting on a row from minutes ago
     /// would open it.
     #[test]
@@ -1739,8 +1815,10 @@ mod oko_pane_tests {
         app
     }
 
+    /// A handful of tabs is a ring: stopping at the last card only means
+    /// pressing `k` back through all of them to reach the first.
     #[test]
-    fn j_and_k_move_the_selection_and_stop_at_the_ends() {
+    fn j_and_k_move_the_selection_and_wrap_at_the_ends() {
         let mut app = showing_cards();
 
         press(&mut app, KeyCode::Char('j'));
@@ -1748,10 +1826,23 @@ mod oko_pane_tests {
         press(&mut app, KeyCode::Down);
         assert_eq!(app.oko_selected.as_deref(), Some("c"));
         press(&mut app, KeyCode::Char('j'));
-        assert_eq!(app.oko_selected.as_deref(), Some("c"), "should not wrap");
+        assert_eq!(app.oko_selected.as_deref(), Some("a"), "past the last is the first");
 
         press(&mut app, KeyCode::Char('k'));
-        assert_eq!(app.oko_selected.as_deref(), Some("b"));
+        assert_eq!(app.oko_selected.as_deref(), Some("c"), "before the first is the last");
+    }
+
+    /// One card is its own neighbour in both directions, and neither key may
+    /// divide by the length to find that out.
+    #[test]
+    fn a_single_card_stays_put() {
+        let mut app = showing_cards();
+        app.oko_view = crate::oko::View::Rows(vec![card("a", 1, "one")]);
+
+        press(&mut app, KeyCode::Char('j'));
+        press(&mut app, KeyCode::Char('k'));
+
+        assert_eq!(app.oko_selected.as_deref(), Some("a"));
     }
 
     /// Selection is a session id, not a position, so a tab closing above the
