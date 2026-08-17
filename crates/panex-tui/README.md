@@ -48,8 +48,8 @@ panex --version   # version
 
 | Key | Action |
 |---|---|
-| `j` / `k` or `Up` / `Down` | Move focus |
-| `PgUp` / `PgDn` | Move focus one page up / down |
+| `j` / `k` or `Up` / `Down` | Move focus, wrapping past either end of the list |
+| `PgUp` / `PgDn` | Move focus one page up / down (stops at the ends) |
 | `g` / `G` | Jump to top / bottom |
 | `Enter` | Open file / enter folder |
 | `Backspace` | Go up one directory |
@@ -105,8 +105,8 @@ for a Claude Code tab whether it is working, waiting on you, ready for a prompt 
 with how long it has said so. Press `O` again to close it. At most one such pane at a time;
 ordinary file panes work alongside it as usual.
 
-Inside it, `j`/`k` move the selection, `Enter` jumps iTerm2's focus to that tab, and `r`
-renames it — clearing the name puts the tab back to the one oko derives from its directory.
+Inside it, `j`/`k` move the selection (wrapping, as in a file pane), `Enter` jumps iTerm2's
+focus to that tab, and `r` renames it — clearing the name puts the tab back to the one oko derives from its directory.
 Everything else on the keyboard is ignored there, since the pane shows no files. The mouse
 works as it does on a file row: a click selects the card under the cursor, a double-click
 jumps to that tab. The selected card is marked only while the card pane is the active one,
