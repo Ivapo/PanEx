@@ -216,10 +216,10 @@ fn move_oko_selection(app: &mut App, delta: i32) {
     }
     // A selection whose tab has closed is no position at all, so movement
     // restarts from the top rather than from wherever it used to be.
-    let current = app
-        .oko_selected
-        .as_deref()
-        .and_then(|id| rows.iter().position(|row| row.session_id == id));
+    let current = selected_index(app);
+    let crate::oko::View::Rows(rows) = &app.oko_view else {
+        return;
+    };
     // Wraps, as the file list does: a short list of tabs is a ring, and
     // stopping at the last card only means pressing `k` six times to reach it.
     let next = match current {
@@ -227,6 +227,70 @@ fn move_oko_selection(app: &mut App, delta: i32) {
         None => 0,
     };
     app.oko_selected = Some(rows[next].session_id.clone());
+    scroll_selection_into_view(app);
+}
+
+/// Scroll the card view by whole cards, and drag the selection along only if
+/// it would otherwise scroll out of sight — the same bargain the file list
+/// strikes with its wheel.
+fn scroll_cards(app: &mut App, delta: i32) -> bool {
+    let crate::oko::View::Rows(rows) = &app.oko_view else {
+        return false;
+    };
+    if app.oko_capacity == 0 {
+        return false;
+    }
+    let max = rows.len().saturating_sub(app.oko_capacity) as i32;
+    let next = (app.oko_offset as i32 + delta).clamp(0, max) as usize;
+    let moved = next != app.oko_offset;
+    app.oko_offset = next;
+    drag_selection_into_view(app) || moved
+}
+
+/// Pull the selection back inside the visible cards. Nothing to do while it is
+/// already there, which is every scroll that has not passed it by.
+fn drag_selection_into_view(app: &mut App) -> bool {
+    let crate::oko::View::Rows(rows) = &app.oko_view else {
+        return false;
+    };
+    if rows.is_empty() || app.oko_capacity == 0 {
+        return false;
+    }
+    let Some(current) = selected_index(app) else {
+        return false;
+    };
+    let last = (app.oko_offset + app.oko_capacity - 1).min(rows.len() - 1);
+    let clamped = current.clamp(app.oko_offset, last);
+    if clamped == current {
+        return false;
+    }
+    let session_id = rows[clamped].session_id.clone();
+    app.oko_selected = Some(session_id);
+    true
+}
+
+/// Scroll the view to the selected card, moving as few cards as will do it.
+/// The keyboard drives the viewport here, where the wheel drives the selection.
+fn scroll_selection_into_view(app: &mut App) {
+    let Some(current) = selected_index(app) else {
+        return;
+    };
+    if app.oko_capacity == 0 {
+        return;
+    }
+    if current < app.oko_offset {
+        app.oko_offset = current;
+    } else if current >= app.oko_offset + app.oko_capacity {
+        app.oko_offset = current + 1 - app.oko_capacity;
+    }
+}
+
+fn selected_index(app: &App) -> Option<usize> {
+    let crate::oko::View::Rows(rows) = &app.oko_view else {
+        return None;
+    };
+    let id = app.oko_selected.as_deref()?;
+    rows.iter().position(|row| row.session_id == id)
 }
 
 fn jump_to_selected_tab(app: &mut App) {
@@ -328,6 +392,12 @@ fn scroll_pane_at(app: &mut App, x: u16, y: u16, delta: i32) -> bool {
         Some(id) => id,
         None => return false,
     };
+    // The card pane keeps its own offset: its list is of cards, each several
+    // rows tall, so a row count would scroll it by fractions of a card. One
+    // card a tick covers about the three rows a file pane moves by.
+    if app.oko_pane_id.as_deref() == Some(pane_id.as_str()) {
+        return scroll_cards(app, delta.signum());
+    }
     let view_height = app
         .pane_views
         .get(&pane_id)
@@ -1273,6 +1343,8 @@ fn detach_oko(app: &mut App) {
     app.oko_stream = None;
     app.oko_view = crate::oko::View::Connecting;
     app.oko_cards.clear();
+    app.oko_offset = 0;
+    app.oko_capacity = 0;
 }
 
 fn cycle_pane(app: &mut App) {
@@ -1883,6 +1955,107 @@ mod oko_pane_tests {
         app.oko_selected = None;
         press(&mut app, KeyCode::Char('r'));
         assert!(app.mode == AppMode::Normal);
+    }
+
+    /// A window of tabs can outrun the pane. Scrolling is by whole cards,
+    /// since a card is what the view is a list of.
+    fn many_cards(count: u32) -> App {
+        let mut app = App::new().unwrap();
+        let cards = open_oko_pane(&mut app);
+        app.active_pane_id = cards;
+        app.oko_view = crate::oko::View::Rows(
+            (1..=count)
+                .map(|i| card(&format!("s{i}"), i, &format!("tab {i}")))
+                .collect(),
+        );
+        app.oko_selected = Some("s1".to_string());
+        // What a render leaves behind, without one: a pane holding four cards.
+        app.oko_capacity = 4;
+        app
+    }
+
+    fn wheel(app: &mut App, down: bool) {
+        let area = app.pane_views[app.oko_pane_id.as_ref().unwrap()].area;
+        handle_mouse_event(
+            app,
+            MouseEvent {
+                kind: if down {
+                    MouseEventKind::ScrollDown
+                } else {
+                    MouseEventKind::ScrollUp
+                },
+                column: area.x + 1,
+                row: area.y + 1,
+                modifiers: KeyModifiers::NONE,
+            },
+        );
+    }
+
+    #[test]
+    fn the_wheel_scrolls_the_cards_and_stops_at_the_last_page() {
+        let mut app = many_cards(10);
+        drawn(&mut app); // populates pane_views, which hit-testing reads
+        app.oko_capacity = 4;
+
+        wheel(&mut app, true);
+        assert_eq!(app.oko_offset, 1, "a tick should move one card");
+
+        for _ in 0..20 {
+            wheel(&mut app, true);
+        }
+        assert_eq!(app.oko_offset, 6, "10 cards, 4 visible — the last page");
+
+        for _ in 0..20 {
+            wheel(&mut app, false);
+        }
+        assert_eq!(app.oko_offset, 0);
+    }
+
+    /// The wheel drags the selection only when it would otherwise scroll out
+    /// of sight — the bargain the file list already strikes.
+    #[test]
+    fn scrolling_past_the_selection_takes_it_along() {
+        let mut app = many_cards(10);
+        drawn(&mut app);
+        app.oko_capacity = 4;
+
+        wheel(&mut app, true);
+        assert_eq!(app.oko_selected.as_deref(), Some("s2"), "left behind");
+
+        wheel(&mut app, false);
+        assert_eq!(
+            app.oko_selected.as_deref(),
+            Some("s2"),
+            "still in view, so it should not have moved"
+        );
+    }
+
+    /// Moving the selection past the last visible card scrolls the view rather
+    /// than selecting something the pane is not showing.
+    #[test]
+    fn the_view_follows_the_selection_off_the_bottom() {
+        let mut app = many_cards(10);
+
+        for _ in 0..4 {
+            press(&mut app, KeyCode::Char('j'));
+        }
+
+        assert_eq!(app.oko_selected.as_deref(), Some("s5"));
+        assert_eq!(app.oko_offset, 1, "should have scrolled by one card");
+    }
+
+    /// Wrapping from the last card to the first has to bring the view back
+    /// with it, or `j` lands on a card that is scrolled off the top.
+    #[test]
+    fn wrapping_to_the_first_card_scrolls_back_to_the_top() {
+        let mut app = many_cards(10);
+        app.oko_selected = Some("s10".to_string());
+        app.oko_offset = 6;
+
+        press(&mut app, KeyCode::Char('j'));
+
+        assert_eq!(app.oko_selected.as_deref(), Some("s1"));
+        assert_eq!(app.oko_offset, 0);
     }
 
     /// Closing the view is never a dead end, even as the only pane left.

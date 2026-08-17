@@ -251,6 +251,17 @@ fn render_oko_pane(
         None
     };
 
+    // A pane can be resized under a scrolled list, so the offset is clamped to
+    // what this body can actually show before anything is drawn from it.
+    let capacity = oko_capacity(body);
+    let count = match &app.oko_view {
+        crate::oko::View::Rows(rows) => rows.len(),
+        _ => 0,
+    };
+    let offset = app.oko_offset.min(count.saturating_sub(capacity));
+    app.oko_offset = offset;
+    app.oko_capacity = capacity;
+
     let cards = match &app.oko_view {
         crate::oko::View::Connecting => {
             render_oko_note(frame, body, "connecting to oko…", Color::DarkGray);
@@ -265,12 +276,27 @@ fn render_oko_pane(
             Vec::new()
         }
         crate::oko::View::Rows(rows) => {
-            render_oko_cards(frame, body, rows, &app.home_path, selected)
+            render_oko_cards(frame, body, rows, &app.home_path, selected, offset)
         }
     };
     // Where the mouse has to land to hit each card. Only what was actually
     // drawn: a card left out for want of room is not there to be clicked.
     app.oko_cards = cards;
+
+    // The same thumb the file list carries, on the same border, so a card pane
+    // with more tabs than it can show says so the way a long directory does.
+    render_scroll_thumb(
+        frame,
+        Rect {
+            x: body.x + body.width,
+            y: body.y,
+            width: 1,
+            height: body.height,
+        },
+        count,
+        capacity,
+        offset,
+    );
 }
 
 fn render_oko_note(frame: &mut Frame, area: Rect, message: &str, color: Color) {
@@ -278,30 +304,50 @@ fn render_oko_note(frame: &mut Frame, area: Rect, message: &str, color: Color) {
     frame.render_widget(text, Rect { height: 1, ..area });
 }
 
-/// Draws the cards and returns where each one landed, keyed by session, for
-/// mouse hit-testing.
+/// How many columns of cards a body this wide takes.
+fn oko_columns(area: Rect) -> u16 {
+    (area.width / CARD_COLUMN_WIDTH).max(1)
+}
+
+/// How many cards a body this size holds — the card view's page size, which
+/// the scroll offset is clamped against and the scroll thumb is drawn from.
+fn oko_capacity(area: Rect) -> usize {
+    let columns = oko_columns(area);
+    if columns == 1 {
+        // The topmost card does without its rule, so it costs a row less than
+        // every card under it.
+        let first = CARD_HEIGHT_STACKED - 1;
+        if area.height < first {
+            return 0;
+        }
+        return 1 + ((area.height - first) / CARD_HEIGHT_STACKED) as usize;
+    }
+    (area.height / CARD_HEIGHT) as usize * columns as usize
+}
+
+/// Draws the cards from `offset` down and returns where each one landed, keyed
+/// by session, for mouse hit-testing.
 fn render_oko_cards(
     frame: &mut Frame,
     area: Rect,
     rows: &[crate::oko::Row],
     home: &str,
     selected: Option<&str>,
+    offset: usize,
 ) -> Vec<(Rect, String)> {
-    let columns = (area.width / CARD_COLUMN_WIDTH).max(1);
+    let columns = oko_columns(area);
     // In one column the side rules enclose nothing — they only spend two
     // columns of a pane that is already the narrow one. A rule above each
     // card separates them just as well, and buys back a row as well.
-    // No scrolling here yet: a window with more tabs than fit simply shows the
-    // ones that do, rather than drawing a card over the pane border.
     let fits = |y: u16, h: u16| y + h <= area.y + area.height;
     let mut hits = Vec::new();
 
     if columns == 1 {
         let mut y = area.y;
-        for (i, row) in rows.iter().enumerate() {
-            // The rule goes *between* cards, so the first one does without:
+        for (i, row) in rows.iter().enumerate().skip(offset) {
+            // The rule goes *between* cards, so the topmost one does without:
             // the header above it is already the separator it would be.
-            let ruled = i > 0;
+            let ruled = i > offset;
             let height = if ruled {
                 CARD_HEIGHT_STACKED
             } else {
@@ -325,8 +371,11 @@ fn render_oko_cards(
         return hits;
     }
 
+    // Aligned down to a whole row of cards, so scrolling a grid moves it by
+    // rows and never leaves a column dangling half a row above its neighbours.
+    let start = offset - offset % columns as usize;
     let card_width = area.width / columns;
-    for (i, row) in rows.iter().enumerate() {
+    for (i, row) in rows.iter().skip(start).enumerate() {
         let i = i as u16;
         let y = area.y + (i / columns) * CARD_HEIGHT;
         if !fits(y, CARD_HEIGHT) {
@@ -1823,6 +1872,53 @@ mod oko_layout_tests {
         assert!(
             interior(&two).iter().any(|l| l.contains('│')),
             "should be two columns by here:\n{two}"
+        );
+    }
+
+    /// A pane too short for every tab scrolls, and says so on its border the
+    /// way a long directory does.
+    #[test]
+    fn a_card_pane_that_cannot_show_every_tab_carries_a_thumb() {
+        let mut app = App::new().unwrap();
+        app.oko_pane_id = Some(app.active_pane_id.clone());
+        app.oko_view = View::Rows(rows());
+
+        // Three cards need 11 rows; this body has room for two.
+        let short = screen_with_highlights(&mut app, 34, 10);
+        let thumbs = short.iter().filter(|(t, _)| t.contains(SCROLL_THUMB)).count();
+        assert!(thumbs > 0, "no thumb on a pane that cannot show every tab:\n{}",
+            short.iter().map(|(t, _)| t.as_str()).collect::<Vec<_>>().join("\n"));
+
+        let tall = screen_with_highlights(&mut app, 34, 20);
+        assert!(
+            !tall.iter().any(|(t, _)| t.contains(SCROLL_THUMB)),
+            "thumb on a pane where everything already fits:\n{}",
+            tall.iter().map(|(t, _)| t.as_str()).collect::<Vec<_>>().join("\n")
+        );
+    }
+
+    /// Scrolled down, the cards above the offset are not drawn, and the one at
+    /// the top of the view loses the rule that only ever went *between* cards.
+    #[test]
+    fn the_view_draws_from_the_offset_down() {
+        let mut app = App::new().unwrap();
+        app.oko_pane_id = Some(app.active_pane_id.clone());
+        app.oko_view = View::Rows(rows());
+        app.oko_offset = 1;
+
+        // Tall enough for two cards, so the one below the offset is drawn too.
+        let s = screen_with_highlights(&mut app, 34, 12)
+            .into_iter()
+            .map(|(t, _)| t)
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        assert!(!s.contains("ivapo"), "the scrolled-off card is still drawn:\n{s}");
+        assert!(s.contains("oko") && s.contains("tikray"), "in:\n{s}");
+        let first = s.lines().position(|l| l.contains("oko")).unwrap();
+        assert!(
+            !s.lines().nth(first - 1).unwrap().contains(CARD_RULE),
+            "rule above the topmost card:\n{s}"
         );
     }
 

@@ -120,6 +120,10 @@ Cards stack in one column until the pane is wide enough for two roomy ones side 
 (about 120 columns), on the grounds that a wide single column reads better than two cramped
 ones.
 
+More tabs than the pane can show scroll, as a long directory does: the wheel moves the view a
+card at a time, moving the selection off either end brings the view with it, and a thumb on the
+right border says where in the list you are.
+
 PanEx reads this from `oko --follow` as a child process rather than linking oko as a
 library, so the feature degrades to nothing when oko is absent: **no oko, no shortcut** —
 `O` is not bound and the help overlay does not list it. It needs oko 0.1.0 or later (the

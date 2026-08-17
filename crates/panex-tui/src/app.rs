@@ -145,6 +145,13 @@ pub struct App {
     /// click can be aimed at one. The card pane has no list to hit-test
     /// against — its rows are boxes, at a size and a count the layout decides.
     pub oko_cards: Vec<(Rect, String)>,
+    /// The first card drawn: the card view's scroll offset, in cards rather
+    /// than rows, because a card is what the view is a list of.
+    pub oko_offset: usize,
+    /// How many cards the pane held last frame. A file pane reads its page
+    /// size off `list_area.height`; here a card is several rows tall and the
+    /// count depends on the column layout, so the renderer leaves it behind.
+    pub oko_capacity: usize,
 }
 
 impl App {
@@ -194,6 +201,8 @@ impl App {
             oko_view: crate::oko::View::Connecting,
             oko_selected: None,
             oko_cards: Vec::new(),
+            oko_offset: 0,
+            oko_capacity: 0,
         })
     }
 
@@ -222,6 +231,11 @@ impl App {
                         if !still_there {
                             self.oko_selected = rows.first().map(|row| row.session_id.clone());
                         }
+                        // Tabs closing can leave the offset past the end, and a
+                        // pane scrolled off its own list draws nothing at all.
+                        self.oko_offset = self
+                            .oko_offset
+                            .min(rows.len().saturating_sub(self.oko_capacity.max(1)));
                         self.oko_view = crate::oko::View::Rows(rows);
                         changed = true;
                     }
