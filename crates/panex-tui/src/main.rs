@@ -1,6 +1,7 @@
 mod app;
 mod input;
 mod layout;
+mod oko;
 mod sort;
 mod ui;
 
@@ -107,12 +108,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let idle_timeout = Duration::from_secs(60);
     terminal.draw(|frame| ui::draw(frame, &mut app))?;
 
+    // Crossterm's poll waits on terminal input and cannot be woken by another
+    // thread, so while the card view is open the loop wakes on its own to
+    // collect what oko has written. Only while it is open: idle stays idle.
+    let oko_tick = Duration::from_millis(150);
+
     loop {
         // Wake either for the next event or when the status message is due to expire.
-        let timeout = match app.status_message_at {
+        let mut timeout = match app.status_message_at {
             Some(at) => status_ttl.saturating_sub(at.elapsed()),
             None => idle_timeout,
         };
+        if app.oko_pane_id.is_some() {
+            timeout = timeout.min(oko_tick);
+        }
 
         let mut dirty = false;
 
@@ -137,6 +146,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     break;
                 }
             }
+        }
+
+        if app.pump_oko() {
+            dirty = true;
         }
 
         // Auto-clear status message after 3 seconds

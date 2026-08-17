@@ -77,6 +77,11 @@ fn handle_normal(app: &mut App, key: KeyEvent) {
         KeyCode::Char('W') => close_active_pane(app),
         KeyCode::Tab => cycle_pane(app),
 
+        // Card view. Bound only when a usable oko is on PATH — otherwise this
+        // falls through unhandled, which is the point: no binding, no entry
+        // in the help overlay, nothing that looks broken when pressed.
+        KeyCode::Char('O') if app.oko_available => toggle_oko_pane(app),
+
         // Pane size — '=' is the unshifted twin of '+'
         KeyCode::Char('+') | KeyCode::Char('=') if !ctrl => resize_active_pane(app, 1),
         KeyCode::Char('-') if !ctrl => resize_active_pane(app, -1),
@@ -1008,15 +1013,30 @@ fn resize_active_pane(app: &mut App, delta: i8) {
 }
 
 fn close_active_pane(app: &mut App) {
+    let pane_id = app.active_pane_id.clone();
+    close_pane(app, &pane_id);
+}
+
+fn close_pane(app: &mut App, pane_id: &str) {
     if count_leaves(&app.layout_root) <= 1 {
+        // Removing the only leaf would leave no pane at all. If it is the
+        // card view, it stops being one and goes back to showing files —
+        // closing the view should never be a dead end.
+        if app.oko_pane_id.as_deref() == Some(pane_id) {
+            detach_oko(app);
+            let home = app.home_path.clone();
+            app.navigate_to(pane_id, &home);
+        }
         return;
     }
 
-    let pane_id = app.active_pane_id.clone();
-    if let Some(new_root) = layout::remove_pane(&app.layout_root, &pane_id) {
+    if let Some(new_root) = layout::remove_pane(&app.layout_root, pane_id) {
         app.layout_root = new_root;
-        app.pane_map.remove(&pane_id);
-        app.raw_entries_map.remove(&pane_id);
+        app.pane_map.remove(pane_id);
+        app.raw_entries_map.remove(pane_id);
+        if app.oko_pane_id.as_deref() == Some(pane_id) {
+            detach_oko(app);
+        }
 
         // Activate first remaining pane
         let leaf_ids = collect_leaf_ids(&app.layout_root);
@@ -1024,6 +1044,44 @@ fn close_active_pane(app: &mut App) {
             app.active_pane_id = first.clone();
         }
     }
+}
+
+/// Opens the card view as a pane, or closes the one already open.
+fn toggle_oko_pane(app: &mut App) {
+    if let Some(existing) = app.oko_pane_id.clone() {
+        close_pane(app, &existing);
+        return;
+    }
+
+    let new_id = app.next_pane_id();
+    app.layout_root = layout::split_pane(
+        &app.layout_root,
+        &app.active_pane_id,
+        &new_id,
+        SplitDirection::Vertical,
+    );
+    // A pane state with no entries. Every focus and open path already guards
+    // on an empty list, so the file bindings go quiet here on their own
+    // rather than needing a second mode kept in step with them.
+    app.pane_map
+        .insert(new_id.clone(), crate::app::PaneState::new(""));
+    app.oko_pane_id = Some(new_id);
+
+    match crate::oko::Stream::start() {
+        Ok(stream) => {
+            app.oko_stream = Some(stream);
+            app.oko_view = crate::oko::View::Connecting;
+        }
+        Err(e) => app.oko_view = crate::oko::View::Lost(e),
+    }
+}
+
+/// Forget the stream. Dropping it kills the child — oko exits on its own when
+/// stdout closes, but a closed view should not leave that to chance.
+fn detach_oko(app: &mut App) {
+    app.oko_pane_id = None;
+    app.oko_stream = None;
+    app.oko_view = crate::oko::View::Connecting;
 }
 
 fn cycle_pane(app: &mut App) {

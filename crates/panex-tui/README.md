@@ -40,6 +40,7 @@ panex --version   # version
 - Create new files (`n`) and folders (`N`)
 - Multi-select with `Shift+j`/`Shift+k`, select all with `Ctrl+a`
 - Mouse support — scroll the pane under the cursor, click to focus a pane / select a row, double-click to open
+- Optional Oko tab cards (`O`) — what every other tab in the iTerm2 window is doing
 - Built-in help overlay (`?`) with the full keybinding table
 - Auto-clearing status messages
 
@@ -59,6 +60,7 @@ panex --version   # version
 | `+` or `=` | Grow active pane by 25% (one step only) |
 | `-` | Shrink active pane by 25% (one step only) |
 | `W` | Close pane |
+| `O` | Open/close the Oko tab cards (only when [oko](https://github.com/Ivapo/oko) is installed) |
 | `y` | Copy |
 | `x` | Cut |
 | `p` or `Ctrl+v` | Paste |
@@ -94,6 +96,23 @@ PanEx stores its config at `~/.panex/config.toml`. Favorites are managed via key
 ```
 
 Extensions not listed fall back to the OS default (`open` on macOS, `xdg-open` on Linux).
+
+## Tab cards (optional)
+
+If [oko](https://github.com/Ivapo/oko) is installed, `O` opens a pane showing what every
+other tab in the same iTerm2 window is doing — working directory, foreground process, and
+for a Claude Code tab whether it is working, waiting on you, ready for a prompt or stale,
+with how long it has said so. Press `O` again to close it. At most one such pane at a time;
+ordinary file panes work alongside it as usual.
+
+PanEx reads this from `oko --follow` as a child process rather than linking oko as a
+library, so the feature degrades to nothing when oko is absent: **no oko, no shortcut** —
+`O` is not bound and the help overlay does not list it. It needs oko 0.1.0 or later (the
+version that answers `--version`); an older build on `PATH` is treated as no oko at all.
+
+```sh
+cargo install --git https://github.com/Ivapo/oko
+```
 
 ## License
 
