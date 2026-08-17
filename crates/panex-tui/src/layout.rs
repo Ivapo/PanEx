@@ -152,23 +152,51 @@ pub fn collect_leaf_ids(node: &LayoutNode) -> Vec<String> {
     }
 }
 
+/// Which side of the pane being split the new one lands on. Left of a
+/// vertical split, above a horizontal one.
+#[derive(Clone, Copy, PartialEq)]
+pub enum Side {
+    Before,
+    After,
+}
+
 pub fn split_pane(
     root: &LayoutNode,
     target_pane_id: &str,
     new_pane_id: &str,
     direction: SplitDirection,
 ) -> LayoutNode {
+    split_pane_on(root, target_pane_id, new_pane_id, direction, Side::After)
+}
+
+pub fn split_pane_on(
+    root: &LayoutNode,
+    target_pane_id: &str,
+    new_pane_id: &str,
+    direction: SplitDirection,
+    side: Side,
+) -> LayoutNode {
     match root {
         LayoutNode::Leaf { pane_id } => {
             if pane_id == target_pane_id {
+                let target = || {
+                    Box::new(LayoutNode::Leaf {
+                        pane_id: target_pane_id.to_string(),
+                    })
+                };
+                let fresh = || {
+                    Box::new(LayoutNode::Leaf {
+                        pane_id: new_pane_id.to_string(),
+                    })
+                };
+                let (first, second) = match side {
+                    Side::Before => (fresh(), target()),
+                    Side::After => (target(), fresh()),
+                };
                 LayoutNode::Split {
                     direction,
-                    first: Box::new(LayoutNode::Leaf {
-                        pane_id: target_pane_id.to_string(),
-                    }),
-                    second: Box::new(LayoutNode::Leaf {
-                        pane_id: new_pane_id.to_string(),
-                    }),
+                    first,
+                    second,
                     ratio: 0.5,
                 }
             } else {
@@ -182,8 +210,20 @@ pub fn split_pane(
             ratio,
         } => LayoutNode::Split {
             direction: dir.clone(),
-            first: Box::new(split_pane(first, target_pane_id, new_pane_id, direction.clone())),
-            second: Box::new(split_pane(second, target_pane_id, new_pane_id, direction)),
+            first: Box::new(split_pane_on(
+                first,
+                target_pane_id,
+                new_pane_id,
+                direction.clone(),
+                side,
+            )),
+            second: Box::new(split_pane_on(
+                second,
+                target_pane_id,
+                new_pane_id,
+                direction,
+                side,
+            )),
             ratio: *ratio,
         },
     }

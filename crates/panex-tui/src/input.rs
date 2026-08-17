@@ -32,6 +32,15 @@ fn handle_normal(app: &mut App, key: KeyEvent) {
     let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
     let shift = key.modifiers.contains(KeyModifiers::SHIFT);
 
+    // The card pane shows no files. Everything except the keys that act on
+    // panes would otherwise act on the directory it happens to carry — a
+    // directory it is not drawing, so the effect would be invisible.
+    if app.oko_pane_id.as_deref() == Some(app.active_pane_id.as_str())
+        && !acts_on_panes(key.code)
+    {
+        return;
+    }
+
     match key.code {
         // Quit
         KeyCode::Char('q') if !ctrl => {
@@ -172,6 +181,23 @@ fn handle_normal(app: &mut App, key: KeyEvent) {
 
         _ => {}
     }
+}
+
+/// Keys that mean the same thing whatever a pane is showing.
+fn acts_on_panes(key: KeyCode) -> bool {
+    matches!(
+        key,
+        KeyCode::Char('q')
+            | KeyCode::Char('O')
+            | KeyCode::Char('W')
+            | KeyCode::Char('|')
+            | KeyCode::Char('_')
+            | KeyCode::Char('+')
+            | KeyCode::Char('=')
+            | KeyCode::Char('-')
+            | KeyCode::Char('?')
+            | KeyCode::Tab
+    )
 }
 
 fn handle_help(app: &mut App, key: KeyEvent) {
@@ -1053,20 +1079,7 @@ fn toggle_oko_pane(app: &mut App) {
         return;
     }
 
-    let new_id = app.next_pane_id();
-    app.layout_root = layout::split_pane(
-        &app.layout_root,
-        &app.active_pane_id,
-        &new_id,
-        SplitDirection::Vertical,
-    );
-    // A pane state with no entries. Every focus and open path already guards
-    // on an empty list, so the file bindings go quiet here on their own
-    // rather than needing a second mode kept in step with them.
-    app.pane_map
-        .insert(new_id.clone(), crate::app::PaneState::new(""));
-    app.oko_pane_id = Some(new_id);
-
+    open_oko_pane(app);
     match crate::oko::Stream::start() {
         Ok(stream) => {
             app.oko_stream = Some(stream);
@@ -1074,6 +1087,33 @@ fn toggle_oko_pane(app: &mut App) {
         }
         Err(e) => app.oko_view = crate::oko::View::Lost(e),
     }
+}
+
+/// Carves out the pane and returns its id. Separate from starting the stream
+/// so the layout can be exercised without spawning anything.
+fn open_oko_pane(app: &mut App) -> String {
+    let new_id = app.next_pane_id();
+    // On the left: the cards are a sidebar you glance at, and the file pane
+    // you were working in keeps the position your eye is already on.
+    app.layout_root = layout::split_pane_on(
+        &app.layout_root,
+        &app.active_pane_id,
+        &new_id,
+        SplitDirection::Vertical,
+        layout::Side::Before,
+    );
+    // Its entry list stays empty — nothing here is a file — but it carries the
+    // directory it was opened from, so splitting *this* pane produces a file
+    // pane showing somewhere real rather than one with no path at all.
+    let origin = app
+        .pane_map
+        .get(&app.active_pane_id)
+        .map(|p| p.current_path.clone())
+        .unwrap_or_else(|| app.home_path.clone());
+    app.pane_map
+        .insert(new_id.clone(), crate::app::PaneState::new(&origin));
+    app.oko_pane_id = Some(new_id.clone());
+    new_id
 }
 
 /// Forget the stream. Dropping it kills the child — oko exits on its own when
@@ -1470,5 +1510,90 @@ mod click_tests {
         click(&mut app, x, y);
 
         assert_eq!(app.pane_map[&pane_id].current_path, tmp.0.to_string_lossy());
+    }
+}
+
+/// The card pane's place in the layout, and what the rest of the keyboard
+/// does while it is the active one.
+#[cfg(test)]
+mod oko_pane_tests {
+    use super::*;
+    use crate::app::App;
+
+    fn press(app: &mut App, code: KeyCode) {
+        handle_key_event(app, KeyEvent::from(code));
+    }
+
+    #[test]
+    fn the_card_pane_opens_on_the_left() {
+        let mut app = App::new().unwrap();
+        let files = app.active_pane_id.clone();
+        let cards = open_oko_pane(&mut app);
+        assert_eq!(collect_leaf_ids(&app.layout_root), vec![cards, files]);
+    }
+
+    /// The bug this fixes: the card pane carried no directory, so splitting it
+    /// produced a pane with nothing to list and nowhere to navigate from.
+    #[test]
+    fn splitting_the_card_pane_gives_a_pane_that_lists_files() {
+        let mut app = App::new().unwrap();
+        let files = app.active_pane_id.clone();
+        let cards = open_oko_pane(&mut app);
+        app.active_pane_id = cards.clone();
+
+        press(&mut app, KeyCode::Char('|'));
+
+        let fresh = collect_leaf_ids(&app.layout_root)
+            .into_iter()
+            .find(|id| *id != cards && *id != files)
+            .expect("a third pane should exist");
+        let pane = &app.pane_map[&fresh];
+        assert!(!pane.current_path.is_empty(), "no directory to navigate from");
+        assert!(!pane.entries.is_empty(), "listed nothing");
+    }
+
+    /// Every file key would otherwise act on the directory the card pane
+    /// carries for splitting — one it never draws, so the effect is invisible.
+    #[test]
+    fn file_keys_do_nothing_while_the_cards_are_active() {
+        let mut app = App::new().unwrap();
+        let cards = open_oko_pane(&mut app);
+        app.active_pane_id = cards;
+
+        for code in [KeyCode::Char('n'), KeyCode::Char('N'), KeyCode::Char('r'), KeyCode::Char('/')] {
+            press(&mut app, code);
+            assert!(
+                app.mode == AppMode::Normal,
+                "{code:?} opened a mode over the cards"
+            );
+        }
+    }
+
+    /// Pane keys still have to work, or the pane is a trap.
+    #[test]
+    fn pane_keys_still_work_while_the_cards_are_active() {
+        let mut app = App::new().unwrap();
+        let files = app.active_pane_id.clone();
+        let cards = open_oko_pane(&mut app);
+        app.active_pane_id = cards;
+
+        press(&mut app, KeyCode::Tab);
+        assert_eq!(app.active_pane_id, files, "Tab should leave the cards");
+    }
+
+    /// Closing the view is never a dead end, even as the only pane left.
+    #[test]
+    fn closing_the_last_card_pane_leaves_a_file_pane() {
+        let mut app = App::new().unwrap();
+        let files = app.active_pane_id.clone();
+        let cards = open_oko_pane(&mut app);
+        close_pane(&mut app, &files);
+        app.active_pane_id = cards.clone();
+
+        close_pane(&mut app, &cards);
+
+        assert!(app.oko_pane_id.is_none(), "still marked as the card pane");
+        assert_eq!(collect_leaf_ids(&app.layout_root), vec![cards.clone()]);
+        assert_eq!(app.pane_map[&cards].current_path, app.home_path);
     }
 }
