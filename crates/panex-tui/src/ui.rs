@@ -238,7 +238,13 @@ fn render_oko_pane(
         crate::oko::View::Rows(rows) if rows.is_empty() => {
             render_oko_note(frame, body, "no tabs to show", Color::DarkGray)
         }
-        crate::oko::View::Rows(rows) => render_oko_cards(frame, body, rows, &app.home_path),
+        crate::oko::View::Rows(rows) => render_oko_cards(
+            frame,
+            body,
+            rows,
+            &app.home_path,
+            app.oko_selected.as_deref(),
+        ),
     }
 }
 
@@ -247,7 +253,13 @@ fn render_oko_note(frame: &mut Frame, area: Rect, message: &str, color: Color) {
     frame.render_widget(text, Rect { height: 1, ..area });
 }
 
-fn render_oko_cards(frame: &mut Frame, area: Rect, rows: &[crate::oko::Row], home: &str) {
+fn render_oko_cards(
+    frame: &mut Frame,
+    area: Rect,
+    rows: &[crate::oko::Row],
+    home: &str,
+    selected: Option<&str>,
+) {
     let columns = (area.width / CARD_MIN_WIDTH).max(1);
     // In one column the side rules enclose nothing — they only spend two
     // columns of a pane that is already the narrow one. A rule above each
@@ -275,6 +287,7 @@ fn render_oko_cards(frame: &mut Frame, area: Rect, rows: &[crate::oko::Row], hom
             row,
             home,
             stacked,
+            selected == Some(row.session_id.as_str()),
         );
     }
 }
@@ -285,15 +298,27 @@ fn render_oko_card(
     row: &crate::oko::Row,
     home: &str,
     stacked: bool,
+    selected: bool,
 ) {
     let name = row.name.as_deref().unwrap_or("—");
+    // The selected card is what Enter jumps to and `r` renames, so it is
+    // marked on the border and the title rather than by a background — a
+    // stacked card has almost no background to fill.
+    let (border, title) = if selected {
+        (
+            Style::default().fg(ACCENT),
+            Style::default().fg(ACCENT).add_modifier(Modifier::BOLD),
+        )
+    } else {
+        (
+            Style::default().fg(Color::DarkGray),
+            Style::default().fg(Color::White),
+        )
+    };
     let block = Block::default()
         .borders(if stacked { Borders::TOP } else { Borders::ALL })
-        .border_style(Style::default().fg(Color::DarkGray))
-        .title(Span::styled(
-            format!(" {} {} ", row.tab, name),
-            Style::default().fg(Color::White),
-        ));
+        .border_style(border)
+        .title(Span::styled(format!(" {} {} ", row.tab, name), title));
     let inner = block.inner(area);
     frame.render_widget(block, area);
     // A top rule leaves the content flush against the pane border, so it gets
@@ -617,7 +642,9 @@ fn render_status_bar(frame: &mut Frame, app: &App, area: Rect) {
         parts.join(" │ ")
     };
 
+    let cards_active = app.oko_pane_id.as_deref() == Some(app.active_pane_id.as_str());
     let mode_hint = match &app.mode {
+        AppMode::Normal if cards_active => "↑↓/jk:select  ↵:jump  r:rename  O:close  Tab:panes",
         AppMode::Normal => "?:help q:quit |_:split +-:size W:close /:search f:fav",
         AppMode::Help => "Esc/q/?:close",
         AppMode::Search { .. } => "Esc:cancel  Enter:confirm",
@@ -1220,6 +1247,7 @@ mod oko_tests {
 
     fn row(tab: u32, name: &str, path: &str, status: Option<&str>, age: Option<&str>, job: Option<&str>) -> Row {
         Row {
+            session_id: format!("session-{tab}"),
             tab,
             name: Some(name.to_string()),
             path: Some(path.to_string()),
@@ -1312,6 +1340,33 @@ mod oko_tests {
         assert!(!footer.contains("Sort:"), "got: {footer:?}");
     }
 
+    /// Whether any cell on the line containing `needle` is drawn in the accent.
+    fn accented_line(app: &mut App, needle: &str) -> bool {
+        let mut terminal = Terminal::new(TestBackend::new(60, 14)).unwrap();
+        terminal.draw(|frame| draw(frame, app)).unwrap();
+        let buffer = terminal.backend().buffer().clone();
+        for y in 0..buffer.area.height {
+            let line: String = (0..buffer.area.width)
+                .map(|x| buffer[(x, y)].symbol())
+                .collect();
+            if line.contains(needle) {
+                return (0..buffer.area.width).any(|x| buffer[(x, y)].fg == ACCENT);
+            }
+        }
+        panic!("no line containing {needle:?}");
+    }
+
+    /// The selected card is what Enter jumps to, so it has to be visibly the
+    /// one — and the unselected ones have to be visibly not.
+    #[test]
+    fn the_selected_card_is_marked_and_the_others_are_not() {
+        let mut app = showing(four_tabs());
+        app.oko_selected = Some("session-3".to_string());
+
+        assert!(accented_line(&mut app, "3 tikray"), "selected card unmarked");
+        assert!(!accented_line(&mut app, "2 oko"), "unselected card marked");
+    }
+
     #[test]
     fn a_lost_stream_says_so_instead_of_drawing_cards() {
         let mut app = showing(View::Lost("oko: the API is off".to_string()));
@@ -1336,6 +1391,7 @@ mod oko_layout_tests {
         ]
         .into_iter()
         .map(|(tab, name, path, status, age, job)| Row {
+            session_id: format!("session-{tab}"),
             tab,
             name: Some(name.to_string()),
             path: Some(path.to_string()),

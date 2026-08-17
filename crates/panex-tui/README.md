@@ -105,6 +105,10 @@ for a Claude Code tab whether it is working, waiting on you, ready for a prompt 
 with how long it has said so. Press `O` again to close it. At most one such pane at a time;
 ordinary file panes work alongside it as usual.
 
+Inside it, `j`/`k` move the selection, `Enter` jumps iTerm2's focus to that tab, and `r`
+renames it — clearing the name puts the tab back to the one oko derives from its directory.
+Everything else on the keyboard is ignored there, since the pane shows no files.
+
 PanEx reads this from `oko --follow` as a child process rather than linking oko as a
 library, so the feature degrades to nothing when oko is absent: **no oko, no shortcut** —
 `O` is not bound and the help overlay does not list it. It needs oko 0.1.0 or later (the

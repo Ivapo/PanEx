@@ -32,11 +32,11 @@ fn handle_normal(app: &mut App, key: KeyEvent) {
     let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
     let shift = key.modifiers.contains(KeyModifiers::SHIFT);
 
-    // The card pane shows no files. Everything except the keys that act on
-    // panes would otherwise act on the directory it happens to carry — a
-    // directory it is not drawing, so the effect would be invisible.
+    // The card pane has its own small keyboard. Beyond that only the keys
+    // that act on panes get through — the rest would act on the directory it
+    // carries for splitting, which it never draws, so the effect is invisible.
     if app.oko_pane_id.as_deref() == Some(app.active_pane_id.as_str())
-        && !acts_on_panes(key.code)
+        && (handle_oko_keys(app, key.code) || !acts_on_panes(key.code))
     {
         return;
     }
@@ -180,6 +180,86 @@ fn handle_normal(app: &mut App, key: KeyEvent) {
         }
 
         _ => {}
+    }
+}
+
+/// The card pane's own keys. Returns true when the key was one of them.
+///
+/// Deliberately the same shapes the file list uses — `j`/`k` to move, `Enter`
+/// to act on what is under the cursor, `r` to rename — so the pane is not a
+/// second keyboard to learn.
+fn handle_oko_keys(app: &mut App, key: KeyCode) -> bool {
+    match key {
+        KeyCode::Up | KeyCode::Char('k') => move_oko_selection(app, -1),
+        KeyCode::Down | KeyCode::Char('j') => move_oko_selection(app, 1),
+        KeyCode::Enter => jump_to_selected_tab(app),
+        KeyCode::Char('r') => start_tab_rename(app),
+        _ => return false,
+    }
+    true
+}
+
+fn selected_row(app: &App) -> Option<&crate::oko::Row> {
+    let crate::oko::View::Rows(rows) = &app.oko_view else {
+        return None;
+    };
+    let id = app.oko_selected.as_deref()?;
+    rows.iter().find(|row| row.session_id == id)
+}
+
+fn move_oko_selection(app: &mut App, delta: i32) {
+    let crate::oko::View::Rows(rows) = &app.oko_view else {
+        return;
+    };
+    if rows.is_empty() {
+        return;
+    }
+    // A selection whose tab has closed is no position at all, so movement
+    // restarts from the top rather than from wherever it used to be.
+    let current = app
+        .oko_selected
+        .as_deref()
+        .and_then(|id| rows.iter().position(|row| row.session_id == id));
+    let next = match current {
+        Some(i) => (i as i32 + delta).clamp(0, rows.len() as i32 - 1) as usize,
+        None => 0,
+    };
+    app.oko_selected = Some(rows[next].session_id.clone());
+}
+
+fn jump_to_selected_tab(app: &mut App) {
+    let Some(session_id) = app.oko_selected.clone() else {
+        return;
+    };
+    if let Err(e) = crate::oko::activate(&session_id) {
+        app.set_status(format!("Jump failed: {}", e));
+    }
+}
+
+fn start_tab_rename(app: &mut App) {
+    let Some(row) = selected_row(app) else {
+        return;
+    };
+    // Prefilled with what the card shows, so clearing it back to the derived
+    // name is a visible delete rather than a thing you have to know about.
+    let session_id = row.session_id.clone();
+    let current = row.name.clone().unwrap_or_default();
+    app.mode = AppMode::Prompt {
+        title: "Rename Tab".to_string(),
+        input: current.clone(),
+        cursor: current.len(),
+        action: PromptAction::RenameTab(session_id),
+    };
+}
+
+fn report_creation(app: &mut App, created: Result<(), String>, name: &str) {
+    match created {
+        Ok(()) => {
+            app.set_status(format!("Created {}", name));
+            let pane_id = app.active_pane_id.clone();
+            app.refresh_pane(&pane_id);
+        }
+        Err(e) => app.set_status(format!("Create failed: {}", e)),
     }
 }
 
@@ -532,10 +612,7 @@ fn handle_prompt(app: &mut App, key: KeyEvent) {
             action,
         } = &app.mode
         {
-            (title.clone(), input.clone(), *cursor, match action {
-                PromptAction::NewFile(dir) => PromptAction::NewFile(dir.clone()),
-                PromptAction::NewFolder(dir) => PromptAction::NewFolder(dir.clone()),
-            })
+            (title.clone(), input.clone(), *cursor, action.clone())
         } else {
             return;
         };
@@ -545,21 +622,28 @@ fn handle_prompt(app: &mut App, key: KeyEvent) {
             app.mode = AppMode::Normal;
         }
         KeyCode::Enter => {
-            if !input.is_empty() {
-                let result = match &action {
-                    PromptAction::NewFile(dir) => panex_core::create_file(dir, &input),
-                    PromptAction::NewFolder(dir) => panex_core::create_folder(dir, &input),
-                };
-                match result {
-                    Ok(()) => {
-                        app.set_status(format!("Created {}", input));
-                        let pane_id = app.active_pane_id.clone();
-                        app.refresh_pane(&pane_id);
-                    }
-                    Err(e) => {
-                        app.set_status(format!("Create failed: {}", e));
-                    }
+            match &action {
+                // An empty name clears it, which is the only way back to the
+                // name oko derives — so this action alone acts on an empty
+                // input, where the others treat it as a cancel.
+                PromptAction::RenameTab(session_id) => {
+                    let name = (!input.is_empty()).then(|| input.clone());
+                    let outcome = crate::oko::set_name(session_id, name.as_deref());
+                    app.set_status(match (outcome, &name) {
+                        (Ok(()), Some(name)) => format!("Renamed tab to {}", name),
+                        (Ok(()), None) => "Tab name cleared".to_string(),
+                        (Err(e), _) => format!("Rename failed: {}", e),
+                    });
                 }
+                PromptAction::NewFile(dir) if !input.is_empty() => {
+                    let created = panex_core::create_file(dir, &input);
+                    report_creation(app, created, &input);
+                }
+                PromptAction::NewFolder(dir) if !input.is_empty() => {
+                    let created = panex_core::create_folder(dir, &input);
+                    report_creation(app, created, &input);
+                }
+                _ => {}
             }
             app.mode = AppMode::Normal;
         }
@@ -1579,6 +1663,87 @@ mod oko_pane_tests {
 
         press(&mut app, KeyCode::Tab);
         assert_eq!(app.active_pane_id, files, "Tab should leave the cards");
+    }
+
+    fn card(session: &str, tab: u32, name: &str) -> crate::oko::Row {
+        crate::oko::Row {
+            session_id: session.to_string(),
+            tab,
+            name: Some(name.to_string()),
+            path: Some("/tmp".to_string()),
+            status: Some("working".to_string()),
+            age: None,
+            job: None,
+        }
+    }
+
+    /// An app showing three cards, with the card pane active.
+    fn showing_cards() -> App {
+        let mut app = App::new().unwrap();
+        let cards = open_oko_pane(&mut app);
+        app.active_pane_id = cards;
+        app.oko_view = crate::oko::View::Rows(vec![
+            card("a", 1, "one"),
+            card("b", 2, "two"),
+            card("c", 3, "three"),
+        ]);
+        app.oko_selected = Some("a".to_string());
+        app
+    }
+
+    #[test]
+    fn j_and_k_move_the_selection_and_stop_at_the_ends() {
+        let mut app = showing_cards();
+
+        press(&mut app, KeyCode::Char('j'));
+        assert_eq!(app.oko_selected.as_deref(), Some("b"));
+        press(&mut app, KeyCode::Down);
+        assert_eq!(app.oko_selected.as_deref(), Some("c"));
+        press(&mut app, KeyCode::Char('j'));
+        assert_eq!(app.oko_selected.as_deref(), Some("c"), "should not wrap");
+
+        press(&mut app, KeyCode::Char('k'));
+        assert_eq!(app.oko_selected.as_deref(), Some("b"));
+    }
+
+    /// Selection is a session id, not a position, so a tab closing above the
+    /// selected one must not slide the selection onto a different card.
+    #[test]
+    fn the_selection_follows_the_session_not_the_position() {
+        let mut app = showing_cards();
+        app.oko_selected = Some("c".to_string());
+
+        app.oko_view = crate::oko::View::Rows(vec![card("c", 1, "three")]);
+        press(&mut app, KeyCode::Char('k'));
+
+        assert_eq!(app.oko_selected.as_deref(), Some("c"));
+    }
+
+    /// `r` prefills with what the card shows, and carries the session id so a
+    /// tab closing while the prompt is open cannot land the name elsewhere.
+    #[test]
+    fn r_opens_a_rename_prefilled_with_the_current_name() {
+        let mut app = showing_cards();
+        app.oko_selected = Some("b".to_string());
+
+        press(&mut app, KeyCode::Char('r'));
+
+        match &app.mode {
+            AppMode::Prompt { input, action, .. } => {
+                assert_eq!(input, "two");
+                assert_eq!(*action, PromptAction::RenameTab("b".to_string()));
+            }
+            _ => panic!("no rename prompt opened"),
+        }
+    }
+
+    /// Nothing selected is nothing to rename — not a prompt aimed at nobody.
+    #[test]
+    fn r_does_nothing_without_a_selection() {
+        let mut app = showing_cards();
+        app.oko_selected = None;
+        press(&mut app, KeyCode::Char('r'));
+        assert!(app.mode == AppMode::Normal);
     }
 
     /// Closing the view is never a dead end, even as the only pane left.

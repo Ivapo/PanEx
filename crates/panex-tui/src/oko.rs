@@ -36,6 +36,10 @@ struct SnapshotLine {
 /// is a Claude tab and publishes no job name.
 #[derive(Deserialize, Clone, Debug, PartialEq)]
 pub struct Row {
+    /// The iTerm2 session UUID: the join key, and what the card is keyed on.
+    /// Selection follows this rather than a position, so a row appearing or
+    /// closing cannot re-point a jump or a rename at a neighbour.
+    pub session_id: String,
     pub tab: u32,
     pub name: Option<String>,
     #[serde(default)]
@@ -107,6 +111,43 @@ fn probe() -> bool {
             }
         }
     }
+}
+
+/// Ask oko to jump iTerm2's focus to a session.
+pub fn activate(session_id: &str) -> Result<(), String> {
+    run_command(&["--activate", session_id])
+}
+
+/// Name a session, or clear the name with `None` — which is the only way back
+/// to the derived default. Not an empty string: oko reads that back as a name
+/// and renders it blank, with no further rename able to escape it.
+pub fn set_name(session_id: &str, name: Option<&str>) -> Result<(), String> {
+    match name {
+        Some(name) => run_command(&["--set-name", session_id, name]),
+        None => run_command(&["--set-name", session_id]),
+    }
+}
+
+/// One short-lived oko, run to completion. These are rare and immediate, so
+/// they are waited on rather than handed to the reader thread — the stream
+/// carries the result back on its own when the change lands.
+fn run_command(args: &[&str]) -> Result<(), String> {
+    let output = Command::new("oko")
+        .args(args)
+        .stdin(Stdio::null())
+        .output()
+        .map_err(|e| format!("could not run oko: {}", e))?;
+
+    if output.status.success() {
+        return Ok(());
+    }
+    // oko puts one line on stderr and exits non-zero. A stale session id — a
+    // tab closed since the card was drawn — arrives here as BadIdentifier.
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    Err(match stderr.trim().lines().last() {
+        Some(line) if !line.is_empty() => line.to_string(),
+        _ => "oko failed".to_string(),
+    })
 }
 
 /// A running `oko --follow` and the thread draining it.
@@ -257,6 +298,7 @@ mod tests {
         assert_eq!(
             events[0],
             Event::Rows(vec![Row {
+                session_id: "A".into(),
                 tab: 2,
                 name: Some("oko".into()),
                 path: Some("/x/oko".into()),
