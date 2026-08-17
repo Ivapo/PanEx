@@ -32,7 +32,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     // Render dialog overlays
     match &app.mode {
         AppMode::Help => {
-            render_help_dialog(frame, area);
+            render_help_dialog(frame, area, app.oko_available);
         }
         AppMode::Confirm { title, message, selected, .. } => {
             render_confirm_dialog(frame, area, title, message, *selected);
@@ -99,6 +99,11 @@ fn render_pane(frame: &mut Frame, app: &mut App, pane_id: &str, area: Rect) {
     } else {
         Style::default().fg(Color::DarkGray)
     };
+
+    if app.oko_pane_id.as_deref() == Some(pane_id) {
+        render_oko_pane(frame, app, pane_id, area, border_style);
+        return;
+    }
 
     let (current_path, search_mode_query) = app
         .pane_map
@@ -171,6 +176,190 @@ fn render_pane(frame: &mut Frame, app: &mut App, pane_id: &str, area: Rect) {
 
     render_column_header(frame, app, header_area);
     render_file_list(frame, app, pane_id, list_area);
+}
+
+/// Card height: two borders and two lines of content — the path, and either a
+/// status with its age or the foreground job.
+const CARD_HEIGHT: u16 = 4;
+/// Below this a card holds no readable path, so the grid stays one column.
+const CARD_MIN_WIDTH: u16 = 22;
+
+/// The card view. What each field means is oko's, in its
+/// `rules/follow-stream.md`; how it is laid out is deliberately ours — its
+/// spec says nothing about layout.
+fn render_oko_pane(
+    frame: &mut Frame,
+    app: &mut App,
+    pane_id: &str,
+    area: Rect,
+    border_style: Style,
+) {
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(border_style)
+        .title(Span::styled(
+            " Oko ",
+            Style::default().fg(ACCENT).add_modifier(Modifier::BOLD),
+        ));
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
+    // Registered like any other pane so clicking it makes it active. Its list
+    // area is empty, so a click selects no row and a double click opens
+    // nothing — there is nothing here to open.
+    app.pane_views.insert(
+        pane_id.to_string(),
+        PaneView { area, list_area: Rect::default() },
+    );
+
+    if inner.height < 2 {
+        return;
+    }
+
+    let header = Rect { height: 1, ..inner };
+    frame.render_widget(
+        Paragraph::new(Span::styled("Tabs", Style::default().fg(Color::DarkGray))),
+        header,
+    );
+    let body = Rect {
+        y: inner.y + 1,
+        height: inner.height - 1,
+        ..inner
+    };
+
+    match &app.oko_view {
+        crate::oko::View::Connecting => {
+            render_oko_note(frame, body, "connecting to oko…", Color::DarkGray)
+        }
+        crate::oko::View::Lost(message) => render_oko_note(frame, body, message, Color::Red),
+        crate::oko::View::Rows(rows) if rows.is_empty() => {
+            render_oko_note(frame, body, "no tabs to show", Color::DarkGray)
+        }
+        crate::oko::View::Rows(rows) => render_oko_cards(frame, body, rows, &app.home_path),
+    }
+}
+
+fn render_oko_note(frame: &mut Frame, area: Rect, message: &str, color: Color) {
+    let text = Paragraph::new(format!(" {}", message)).style(Style::default().fg(color));
+    frame.render_widget(text, Rect { height: 1, ..area });
+}
+
+fn render_oko_cards(frame: &mut Frame, area: Rect, rows: &[crate::oko::Row], home: &str) {
+    let columns = (area.width / CARD_MIN_WIDTH).max(1);
+    let card_width = area.width / columns;
+
+    for (i, row) in rows.iter().enumerate() {
+        let i = i as u16;
+        let y = area.y + (i / columns) * CARD_HEIGHT;
+        // No scrolling here yet: a window with more tabs than fit simply
+        // shows the ones that do, rather than drawing a card over the border.
+        if y + CARD_HEIGHT > area.y + area.height {
+            break;
+        }
+        render_oko_card(
+            frame,
+            Rect {
+                x: area.x + (i % columns) * card_width,
+                y,
+                width: card_width,
+                height: CARD_HEIGHT,
+            },
+            row,
+            home,
+        );
+    }
+}
+
+fn render_oko_card(frame: &mut Frame, area: Rect, row: &crate::oko::Row, home: &str) {
+    let name = row.name.as_deref().unwrap_or("—");
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::DarkGray))
+        .title(Span::styled(
+            format!(" {} {} ", row.tab, name),
+            Style::default().fg(Color::White),
+        ));
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+    if inner.height == 0 || inner.width == 0 {
+        return;
+    }
+
+    let width = inner.width as usize;
+    let path = row.path.as_deref().map(|p| abbreviate(p, home)).unwrap_or_default();
+    frame.render_widget(
+        Paragraph::new(Span::styled(
+            truncate_left(&path, width),
+            Style::default().fg(Color::DarkGray),
+        )),
+        Rect { height: 1, ..inner },
+    );
+
+    if inner.height < 2 {
+        return;
+    }
+    let second = Rect {
+        y: inner.y + 1,
+        height: 1,
+        ..inner
+    };
+    // A row with a status is a Claude tab and carries no job; a row without
+    // one carries the foreground process instead. They are exclusive.
+    if let Some(status) = row.status.as_deref() {
+        frame.render_widget(
+            Paragraph::new(status_line(status, row.age.as_deref(), width)),
+            second,
+        );
+    } else if let Some(job) = row.job.as_deref() {
+        frame.render_widget(
+            Paragraph::new(Span::styled(
+                truncate_left(job, width),
+                Style::default().fg(Color::DarkGray),
+            )),
+            second,
+        );
+    }
+}
+
+/// Status on the left, how long it has said so on the right.
+fn status_line(status: &str, age: Option<&str>, width: usize) -> Line<'static> {
+    let (glyph, color) = match status {
+        "working" => ("◐", Color::Green),
+        "waiting" => ("▲", ACCENT),
+        "ready" => ("●", Color::Cyan),
+        "stale" => ("○", Color::DarkGray),
+        // A status this build does not know is still worth showing as text —
+        // the schema check upstream is what guards against drawing nonsense.
+        _ => ("·", Color::DarkGray),
+    };
+    let left = format!("{} {}", glyph, status);
+    let right = age.unwrap_or("");
+    let gap = width.saturating_sub(left.chars().count() + right.chars().count());
+    Line::from(vec![
+        Span::styled(left, Style::default().fg(color)),
+        Span::raw(" ".repeat(gap)),
+        Span::styled(right.to_string(), Style::default().fg(Color::DarkGray)),
+    ])
+}
+
+/// oko publishes paths unabbreviated on purpose — `~` is a decoration, and
+/// which one to use is the drawing program's business.
+fn abbreviate(path: &str, home: &str) -> String {
+    match path.strip_prefix(home) {
+        Some("") if !home.is_empty() => "~".to_string(),
+        Some(rest) if rest.starts_with('/') => format!("~{}", rest),
+        _ => path.to_string(),
+    }
+}
+
+/// Paths and job names are recognised by their tails, so drop from the left.
+fn truncate_left(s: &str, max: usize) -> String {
+    let chars: Vec<char> = s.chars().collect();
+    if chars.len() <= max || max == 0 {
+        return s.to_string();
+    }
+    let keep = max.saturating_sub(1);
+    format!("…{}", chars[chars.len() - keep..].iter().collect::<String>())
 }
 
 fn render_column_header(frame: &mut Frame, app: &App, area: Rect) {
@@ -371,26 +560,36 @@ fn render_scroll_thumb(
 }
 
 fn render_status_bar(frame: &mut Frame, app: &App, area: Rect) {
-    let pane = app.pane_map.get(&app.active_pane_id);
-    let item_count = pane.map(|p| p.entries.len()).unwrap_or(0);
-    let sel_count = pane.map(|p| p.selected_paths.len()).unwrap_or(0);
-
-    let mut parts = vec![
-        format!(" {} items", item_count),
-        format!("Sort: {} {}", app.sort_field.label(), app.sort_direction.indicator()),
-    ];
-
-    if sel_count > 0 {
-        parts.insert(1, format!("{} selected", sel_count));
-    }
-
-    if !app.show_hidden {
-        parts.push("Hidden: off".to_string());
+    // The card view has no items, no sort and no hidden files. Reporting on a
+    // file list that isn't there would describe the wrong pane.
+    let left = if app.oko_pane_id.as_deref() == Some(app.active_pane_id.as_str()) {
+        match &app.oko_view {
+            crate::oko::View::Rows(rows) => format!(" {} tabs", rows.len()),
+            crate::oko::View::Connecting => " connecting".to_string(),
+            crate::oko::View::Lost(_) => " no stream".to_string(),
+        }
     } else {
-        parts.push("Hidden: on".to_string());
-    }
+        let pane = app.pane_map.get(&app.active_pane_id);
+        let item_count = pane.map(|p| p.entries.len()).unwrap_or(0);
+        let sel_count = pane.map(|p| p.selected_paths.len()).unwrap_or(0);
 
-    let left = parts.join(" │ ");
+        let mut parts = vec![
+            format!(" {} items", item_count),
+            format!("Sort: {} {}", app.sort_field.label(), app.sort_direction.indicator()),
+        ];
+
+        if sel_count > 0 {
+            parts.insert(1, format!("{} selected", sel_count));
+        }
+
+        if !app.show_hidden {
+            parts.push("Hidden: off".to_string());
+        } else {
+            parts.push("Hidden: on".to_string());
+        }
+
+        parts.join(" │ ")
+    };
 
     let mode_hint = match &app.mode {
         AppMode::Normal => "?:help q:quit |_:split +-:size W:close /:search f:fav",
@@ -539,7 +738,20 @@ fn help_lines(sections: &[(&str, &[(&str, &str)])]) -> Vec<Line<'static>> {
     lines
 }
 
-fn render_help_dialog(frame: &mut Frame, area: Rect) {
+fn render_help_dialog(frame: &mut Frame, area: Rect, oko_available: bool) {
+    // Listed only when there is a usable oko to open. An entry for a key that
+    // is not bound is worse than no entry at all.
+    let mut panes: Vec<(&str, &str)> = vec![
+        ("|", "split vertical"),
+        ("_", "split horizontal"),
+        ("+ / =", "grow pane 25%"),
+        ("-", "shrink pane 25%"),
+        ("W", "close pane"),
+    ];
+    if oko_available {
+        panes.push(("O", "tab cards (oko)"));
+    }
+
     let left = help_lines(&[
         (
             "Navigation",
@@ -555,16 +767,7 @@ fn render_help_dialog(frame: &mut Frame, area: Rect) {
                 ("f", "toggle favorite"),
             ],
         ),
-        (
-            "Panes",
-            &[
-                ("|", "split vertical"),
-                ("_", "split horizontal"),
-                ("+ / =", "grow pane 25%"),
-                ("-", "shrink pane 25%"),
-                ("W", "close pane"),
-            ],
-        ),
+        ("Panes", &panes),
         (
             "Selection",
             &[
@@ -964,5 +1167,129 @@ mod panic_probe {
         }
         println!("FAILCOUNT={} sizes={:?}", fails.len(), &fails[..fails.len().min(30)]);
         assert!(fails.is_empty(), "panics at {} terminal sizes", fails.len());
+    }
+}
+
+#[cfg(test)]
+mod oko_tests {
+    use super::*;
+    use crate::app::App;
+    use crate::oko::{Row, View};
+    use ratatui::backend::TestBackend;
+    use ratatui::Terminal;
+
+    fn screen(app: &mut App, width: u16, height: u16) -> String {
+        let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
+        terminal.draw(|frame| draw(frame, app)).unwrap();
+        let buffer = terminal.backend().buffer().clone();
+        (0..buffer.area.height)
+            .map(|y| {
+                (0..buffer.area.width)
+                    .map(|x| buffer[(x, y)].symbol())
+                    .collect::<String>()
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    fn row(tab: u32, name: &str, path: &str, status: Option<&str>, age: Option<&str>, job: Option<&str>) -> Row {
+        Row {
+            tab,
+            name: Some(name.to_string()),
+            path: Some(path.to_string()),
+            status: status.map(String::from),
+            age: age.map(String::from),
+            job: job.map(String::from),
+        }
+    }
+
+    fn showing(view: View) -> App {
+        let mut app = App::new().unwrap();
+        app.oko_pane_id = Some(app.active_pane_id.clone());
+        app.oko_view = view;
+        app
+    }
+
+    fn four_tabs() -> View {
+        View::Rows(vec![
+            row(1, "ivapo", "/Users/me", None, None, Some("panex")),
+            row(2, "oko", "/Users/me/dev/main/oko", Some("ready"), Some(">30m"), None),
+            row(3, "tikray", "/Users/me/dev/main/tikray", Some("working"), None, None),
+            row(4, "PanEx", "/Users/me/dev/main/PanEx", Some("waiting"), Some(">5m"), None),
+        ])
+    }
+
+    #[test]
+    fn a_card_carries_tab_name_path_status_and_age() {
+        let mut app = showing(four_tabs());
+        let s = screen(&mut app, 60, 14);
+        for expected in ["2 oko", "/Users/me/dev/main/oko", "ready", ">30m"] {
+            assert!(s.contains(expected), "missing {expected:?} in:\n{s}");
+        }
+    }
+
+    /// The pane is Oko's, and the thing it lists is tabs. Both are named.
+    #[test]
+    fn the_pane_says_what_it_is() {
+        let mut app = showing(four_tabs());
+        let s = screen(&mut app, 60, 14);
+        assert!(s.contains("Oko"), "pane title missing in:\n{s}");
+        assert!(s.contains("Tabs"), "content header missing in:\n{s}");
+    }
+
+    /// A row with a status is a Claude tab and publishes no job; a row without
+    /// one shows its foreground process instead.
+    #[test]
+    fn a_plain_tab_shows_its_job_where_a_status_would_go() {
+        let mut app = showing(four_tabs());
+        let s = screen(&mut app, 60, 14);
+        assert!(s.contains("panex"), "job missing in:\n{s}");
+    }
+
+    /// oko publishes paths unabbreviated on purpose — the `~` is ours to draw.
+    #[test]
+    fn home_is_abbreviated_when_drawing() {
+        let home = crate::app::App::new().unwrap().home_path;
+        let mut app = showing(View::Rows(vec![row(
+            1,
+            "here",
+            &format!("{home}/dev/main/oko"),
+            Some("working"),
+            None,
+            None,
+        )]));
+        let s = screen(&mut app, 60, 10);
+        assert!(s.contains("~/dev/main/oko"), "not abbreviated in:\n{s}");
+    }
+
+    /// A card that cannot be drawn whole would spill over the pane border.
+    #[test]
+    fn cards_that_do_not_fit_are_left_out_rather_than_clipped() {
+        let mut app = showing(four_tabs());
+        let s = screen(&mut app, 30, 8);
+        for line in s.lines() {
+            assert_eq!(
+                line.chars().count(),
+                30,
+                "row is not the pane width in:\n{s}"
+            );
+        }
+    }
+
+    /// The card view has no items, no sort and no hidden files to report.
+    #[test]
+    fn the_status_bar_describes_tabs_not_a_file_list() {
+        let mut app = showing(four_tabs());
+        let s = screen(&mut app, 60, 14);
+        let footer = s.lines().last().unwrap();
+        assert!(footer.contains("4 tabs"), "got: {footer:?}");
+        assert!(!footer.contains("Sort:"), "got: {footer:?}");
+    }
+
+    #[test]
+    fn a_lost_stream_says_so_instead_of_drawing_cards() {
+        let mut app = showing(View::Lost("oko: the API is off".to_string()));
+        let s = screen(&mut app, 60, 10);
+        assert!(s.contains("the API is off"), "in:\n{s}");
     }
 }

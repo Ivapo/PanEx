@@ -123,6 +123,16 @@ pub struct App {
     /// recognised as the second half of a double click. Crossterm reports
     /// button presses only — pairing them is ours to do.
     pub last_click: Option<(String, usize, std::time::Instant)>,
+    /// Whether a usable oko is on PATH, decided once at startup. False means
+    /// the shortcut is not bound and the help overlay does not list it — a
+    /// key that does nothing reads as a broken keyboard.
+    pub oko_available: bool,
+    /// The one leaf currently drawing cards, if any. At most one: the view
+    /// reports on the whole window, so a second would draw the same thing
+    /// twice and hold a second iTerm2 connection to do it.
+    pub oko_pane_id: Option<String>,
+    pub oko_stream: Option<crate::oko::Stream>,
+    pub oko_view: crate::oko::View,
 }
 
 impl App {
@@ -166,7 +176,42 @@ impl App {
             should_quit: false,
             config,
             last_click: None,
+            oko_available: crate::oko::is_available(),
+            oko_pane_id: None,
+            oko_stream: None,
+            oko_view: crate::oko::View::Connecting,
         })
+    }
+
+    /// Take whatever the oko reader has queued. Returns true if the cards
+    /// changed, so the caller redraws only then — the stream is already quiet
+    /// by design, and an identical snapshot should not cost a frame.
+    pub fn pump_oko(&mut self) -> bool {
+        let events = match &self.oko_stream {
+            Some(stream) => stream.drain(),
+            None => return false,
+        };
+
+        let mut changed = false;
+        for event in events {
+            match event {
+                crate::oko::Event::Rows(rows) => {
+                    let same = matches!(&self.oko_view, crate::oko::View::Rows(shown) if *shown == rows);
+                    if !same {
+                        self.oko_view = crate::oko::View::Rows(rows);
+                        changed = true;
+                    }
+                }
+                crate::oko::Event::Lost(message) => {
+                    // Terminal: nothing more is coming down this stream, so
+                    // drop it rather than polling a dead channel forever.
+                    self.oko_view = crate::oko::View::Lost(message);
+                    self.oko_stream = None;
+                    changed = true;
+                }
+            }
+        }
+        changed
     }
 
     pub fn set_status(&mut self, msg: String) {
