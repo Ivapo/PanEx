@@ -141,6 +141,10 @@ pub struct App {
     /// Tabs open and close under the cursor, and a position would quietly
     /// re-point Enter or a rename at whichever row slid into that slot.
     pub oko_selected: Option<String>,
+    /// Where each card was drawn last frame and whose session it is, so a
+    /// click can be aimed at one. The card pane has no list to hit-test
+    /// against — its rows are boxes, at a size and a count the layout decides.
+    pub oko_cards: Vec<(Rect, String)>,
 }
 
 impl App {
@@ -189,6 +193,7 @@ impl App {
             oko_stream: None,
             oko_view: crate::oko::View::Connecting,
             oko_selected: None,
+            oko_cards: Vec::new(),
         })
     }
 
