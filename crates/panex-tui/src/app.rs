@@ -85,10 +85,14 @@ pub enum ConfirmAction {
     Delete(Vec<String>),
 }
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Clone, Debug)]
 pub enum PromptAction {
     NewFile(String),
     NewFolder(String),
+    /// Name the iTerm2 session behind a card. Carries the session id, so a
+    /// tab closing while the prompt is open cannot land the name on a
+    /// neighbour — it fails instead.
+    RenameTab(String),
 }
 
 pub struct FileClipboard {
@@ -133,6 +137,10 @@ pub struct App {
     pub oko_pane_id: Option<String>,
     pub oko_stream: Option<crate::oko::Stream>,
     pub oko_view: crate::oko::View,
+    /// Which card is selected, held as a session id rather than a position.
+    /// Tabs open and close under the cursor, and a position would quietly
+    /// re-point Enter or a rename at whichever row slid into that slot.
+    pub oko_selected: Option<String>,
 }
 
 impl App {
@@ -180,6 +188,7 @@ impl App {
             oko_pane_id: None,
             oko_stream: None,
             oko_view: crate::oko::View::Connecting,
+            oko_selected: None,
         })
     }
 
@@ -198,6 +207,16 @@ impl App {
                 crate::oko::Event::Rows(rows) => {
                     let same = matches!(&self.oko_view, crate::oko::View::Rows(shown) if *shown == rows);
                     if !same {
+                        // Keep the selection on the session it was on. It only
+                        // moves when that tab has gone, and then to the first
+                        // row rather than to whatever took its place.
+                        let still_there = self
+                            .oko_selected
+                            .as_deref()
+                            .is_some_and(|id| rows.iter().any(|row| row.session_id == id));
+                        if !still_there {
+                            self.oko_selected = rows.first().map(|row| row.session_id.clone());
+                        }
                         self.oko_view = crate::oko::View::Rows(rows);
                         changed = true;
                     }
