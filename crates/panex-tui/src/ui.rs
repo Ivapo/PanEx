@@ -178,9 +178,12 @@ fn render_pane(frame: &mut Frame, app: &mut App, pane_id: &str, area: Rect) {
     render_file_list(frame, app, pane_id, list_area);
 }
 
-/// Card height: two borders and two lines of content — the path, and either a
+/// Boxed card: two borders and two lines of content — the path, and either a
 /// status with its age or the foreground job.
 const CARD_HEIGHT: u16 = 4;
+/// Stacked card: a rule instead of a box, so the same two lines cost one row
+/// less and two columns less.
+const CARD_HEIGHT_STACKED: u16 = 3;
 /// Below this a card holds no readable path, so the grid stays one column.
 const CARD_MIN_WIDTH: u16 = 22;
 
@@ -246,14 +249,19 @@ fn render_oko_note(frame: &mut Frame, area: Rect, message: &str, color: Color) {
 
 fn render_oko_cards(frame: &mut Frame, area: Rect, rows: &[crate::oko::Row], home: &str) {
     let columns = (area.width / CARD_MIN_WIDTH).max(1);
+    // In one column the side rules enclose nothing — they only spend two
+    // columns of a pane that is already the narrow one. A rule above each
+    // card separates them just as well, and buys back a row as well.
+    let stacked = columns == 1;
+    let card_height = if stacked { CARD_HEIGHT_STACKED } else { CARD_HEIGHT };
     let card_width = area.width / columns;
 
     for (i, row) in rows.iter().enumerate() {
         let i = i as u16;
-        let y = area.y + (i / columns) * CARD_HEIGHT;
+        let y = area.y + (i / columns) * card_height;
         // No scrolling here yet: a window with more tabs than fit simply
         // shows the ones that do, rather than drawing a card over the border.
-        if y + CARD_HEIGHT > area.y + area.height {
+        if y + card_height > area.y + area.height {
             break;
         }
         render_oko_card(
@@ -262,18 +270,25 @@ fn render_oko_cards(frame: &mut Frame, area: Rect, rows: &[crate::oko::Row], hom
                 x: area.x + (i % columns) * card_width,
                 y,
                 width: card_width,
-                height: CARD_HEIGHT,
+                height: card_height,
             },
             row,
             home,
+            stacked,
         );
     }
 }
 
-fn render_oko_card(frame: &mut Frame, area: Rect, row: &crate::oko::Row, home: &str) {
+fn render_oko_card(
+    frame: &mut Frame,
+    area: Rect,
+    row: &crate::oko::Row,
+    home: &str,
+    stacked: bool,
+) {
     let name = row.name.as_deref().unwrap_or("—");
     let block = Block::default()
-        .borders(Borders::ALL)
+        .borders(if stacked { Borders::TOP } else { Borders::ALL })
         .border_style(Style::default().fg(Color::DarkGray))
         .title(Span::styled(
             format!(" {} {} ", row.tab, name),
@@ -281,6 +296,17 @@ fn render_oko_card(frame: &mut Frame, area: Rect, row: &crate::oko::Row, home: &
         ));
     let inner = block.inner(area);
     frame.render_widget(block, area);
+    // A top rule leaves the content flush against the pane border, so it gets
+    // the indent the box's own left edge was providing.
+    let inner = if stacked {
+        Rect {
+            x: inner.x + 1,
+            width: inner.width.saturating_sub(1),
+            ..inner
+        }
+    } else {
+        inner
+    };
     if inner.height == 0 || inner.width == 0 {
         return;
     }
@@ -1291,5 +1317,99 @@ mod oko_tests {
         let mut app = showing(View::Lost("oko: the API is off".to_string()));
         let s = screen(&mut app, 60, 10);
         assert!(s.contains("the API is off"), "in:\n{s}");
+    }
+}
+
+#[cfg(test)]
+mod oko_layout_tests {
+    use super::*;
+    use crate::app::App;
+    use crate::oko::{Row, View};
+    use ratatui::backend::TestBackend;
+    use ratatui::Terminal;
+
+    fn rows() -> Vec<Row> {
+        [
+            (1u32, "ivapo", "/Users/me", None, None, Some("panex")),
+            (2, "oko", "/Users/me/dev/oko", Some("ready"), Some(">30m"), None),
+            (3, "tikray", "/Users/me/dev/tikray", Some("working"), None, None),
+        ]
+        .into_iter()
+        .map(|(tab, name, path, status, age, job)| Row {
+            tab,
+            name: Some(name.to_string()),
+            path: Some(path.to_string()),
+            status: status.map(String::from),
+            age: age.map(String::from),
+            job: job.map(String::from),
+        })
+        .collect()
+    }
+
+    fn screen(width: u16, height: u16) -> String {
+        let mut app = App::new().unwrap();
+        app.oko_pane_id = Some(app.active_pane_id.clone());
+        app.oko_view = View::Rows(rows());
+        let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
+        terminal.draw(|frame| draw(frame, &mut app)).unwrap();
+        let buffer = terminal.backend().buffer().clone();
+        (0..buffer.area.height)
+            .map(|y| {
+                (0..buffer.area.width)
+                    .map(|x| buffer[(x, y)].symbol())
+                    .collect::<String>()
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    /// The interior of a rendered pane, with its own borders stripped.
+    fn interior(screen: &str) -> Vec<String> {
+        screen
+            .lines()
+            .skip(1)
+            .take_while(|l| !l.starts_with('└'))
+            .map(|l| {
+                let chars: Vec<char> = l.chars().collect();
+                chars[1..chars.len() - 1].iter().collect()
+            })
+            .collect()
+    }
+
+    /// One column of cards has nothing to enclose, so the side rules go and
+    /// the row they cost comes back.
+    #[test]
+    fn a_single_column_draws_no_card_sides() {
+        let s = screen(34, 14);
+        for line in interior(&s) {
+            assert!(
+                !line.contains('│'),
+                "vertical rule inside a one-column view:\n{s}"
+            );
+        }
+        // Boxed cards are 4 rows, stacked ones 3, so all three fit here.
+        assert!(s.contains("3 tikray"), "third card should fit:\n{s}");
+    }
+
+    /// Side by side, the box is what tells one card from its neighbour.
+    #[test]
+    fn two_columns_keep_the_boxes() {
+        let s = screen(62, 14);
+        assert!(
+            interior(&s).iter().any(|l| l.contains('│')),
+            "cards should be boxed when they sit side by side:\n{s}"
+        );
+        assert!(s.contains("1 ivapo") && s.contains("2 oko"));
+    }
+
+    /// Whichever style, no card may spill past the pane it lives in.
+    #[test]
+    fn cards_stay_inside_the_pane() {
+        for (w, h) in [(34, 14), (62, 14), (24, 8), (80, 6)] {
+            let s = screen(w, h);
+            for line in s.lines() {
+                assert_eq!(line.chars().count(), w as usize, "at {w}x{h}:\n{s}");
+            }
+        }
     }
 }
