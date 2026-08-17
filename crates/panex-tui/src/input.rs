@@ -372,6 +372,12 @@ fn click_at(app: &mut App, x: u16, y: u16) -> bool {
         changed = true;
     }
 
+    // The card pane draws no rows, so its clicks are hit-tested against the
+    // cards themselves rather than against a list area it does not have.
+    if app.oko_pane_id.as_deref() == Some(pane_id.as_str()) {
+        return click_card_at(app, &pane_id, x, y) || changed;
+    }
+
     let list = match app.pane_views.get(&pane_id) {
         Some(v) => v.list_area,
         None => return changed,
@@ -411,6 +417,47 @@ fn click_at(app: &mut App, x: u16, y: u16) -> bool {
     }
 
     app.last_click = Some((pane_id, idx, now));
+    changed
+}
+
+/// A click inside the card pane: it selects the card under the cursor, and a
+/// second one on the same card jumps to that tab — the same pair of gestures a
+/// file row answers to, so the pane is not a second mouse to learn.
+///
+/// Pairing is by card position, as it is for file rows, but the jump goes to
+/// whatever is selected *now*: if a tab closed between the two clicks and the
+/// cards shuffled, the second click has already re-aimed the selection at the
+/// card actually under the cursor.
+fn click_card_at(app: &mut App, pane_id: &str, x: u16, y: u16) -> bool {
+    let hit = app
+        .oko_cards
+        .iter()
+        .position(|(card, _)| {
+            x >= card.x && x < card.x + card.width && y >= card.y && y < card.y + card.height
+        })
+        .map(|i| (i, app.oko_cards[i].1.clone()));
+
+    // The gaps around the cards are not a card. Clicking one is a deliberate
+    // miss, and should not leave half a pair waiting for the next click.
+    let Some((idx, session_id)) = hit else {
+        app.last_click = None;
+        return false;
+    };
+
+    let mut changed = false;
+    if app.oko_selected.as_deref() != Some(session_id.as_str()) {
+        app.oko_selected = Some(session_id);
+        changed = true;
+    }
+
+    let now = Instant::now();
+    if completes_double_click(app.last_click.as_ref(), pane_id, idx, now) {
+        app.last_click = None;
+        jump_to_selected_tab(app);
+        return true;
+    }
+
+    app.last_click = Some((pane_id.to_string(), idx, now));
     changed
 }
 
@@ -1206,6 +1253,7 @@ fn detach_oko(app: &mut App) {
     app.oko_pane_id = None;
     app.oko_stream = None;
     app.oko_view = crate::oko::View::Connecting;
+    app.oko_cards.clear();
 }
 
 fn cycle_pane(app: &mut App) {
@@ -1760,5 +1808,96 @@ mod oko_pane_tests {
         assert!(app.oko_pane_id.is_none(), "still marked as the card pane");
         assert_eq!(collect_leaf_ids(&app.layout_root), vec![cards.clone()]);
         assert_eq!(app.pane_map[&cards].current_path, app.home_path);
+    }
+
+    /// Renders once so the cards have screen positions, and returns the middle
+    /// of each one — hit-testing reads what the last frame drew.
+    fn drawn(app: &mut App) -> Vec<(u16, u16)> {
+        use ratatui::backend::TestBackend;
+        use ratatui::Terminal;
+        let mut terminal = Terminal::new(TestBackend::new(80, 24)).unwrap();
+        terminal.draw(|frame| crate::ui::draw(frame, app)).unwrap();
+        app.oko_cards
+            .iter()
+            .map(|(card, _)| (card.x + card.width / 2, card.y + card.height / 2))
+            .collect()
+    }
+
+    fn click(app: &mut App, x: u16, y: u16) {
+        handle_mouse_event(
+            app,
+            MouseEvent {
+                kind: MouseEventKind::Down(MouseButton::Left),
+                column: x,
+                row: y,
+                modifiers: KeyModifiers::NONE,
+            },
+        );
+    }
+
+    /// A click on a card selects it, exactly as a click on a file row moves
+    /// the cursor there — and it takes the pane with it.
+    #[test]
+    fn clicking_a_card_selects_it() {
+        let mut app = showing_cards();
+        let files = collect_leaf_ids(&app.layout_root)
+            .into_iter()
+            .find(|id| Some(id.as_str()) != app.oko_pane_id.as_deref())
+            .unwrap();
+        let cards = drawn(&mut app);
+        app.active_pane_id = files;
+
+        let (x, y) = cards[2];
+        click(&mut app, x, y);
+
+        assert_eq!(app.oko_selected.as_deref(), Some("c"));
+        assert_eq!(app.active_pane_id, app.oko_pane_id.clone().unwrap());
+    }
+
+    /// The second click is the one that jumps, so it must be recognised as the
+    /// other half of the pair rather than banked as a fresh first click.
+    #[test]
+    fn a_second_click_on_the_same_card_is_a_pair() {
+        let mut app = showing_cards();
+        let cards = drawn(&mut app);
+        let (x, y) = cards[1];
+
+        click(&mut app, x, y);
+        assert!(app.last_click.is_some(), "first click was not banked");
+
+        click(&mut app, x, y);
+        assert!(
+            app.last_click.is_none(),
+            "the pair should have been spent on a jump, not re-banked"
+        );
+        assert_eq!(app.oko_selected.as_deref(), Some("b"));
+    }
+
+    /// Two clicks on different cards are two clicks, however fast.
+    #[test]
+    fn clicks_on_two_cards_do_not_pair() {
+        let mut app = showing_cards();
+        let cards = drawn(&mut app);
+
+        click(&mut app, cards[0].0, cards[0].1);
+        click(&mut app, cards[1].0, cards[1].1);
+
+        assert!(app.last_click.is_some(), "the second click should stand alone");
+        assert_eq!(app.oko_selected.as_deref(), Some("b"));
+    }
+
+    /// A click on the gap between cards is a deliberate miss: it changes no
+    /// selection, and leaves no half-pair for the next click to complete.
+    #[test]
+    fn clicking_past_the_last_card_selects_nothing() {
+        let mut app = showing_cards();
+        let cards = drawn(&mut app);
+        let below = cards.last().unwrap().1 + 4;
+
+        click(&mut app, cards[0].0, cards[0].1);
+        click(&mut app, cards[0].0, below);
+
+        assert_eq!(app.oko_selected.as_deref(), Some("a"), "selection moved");
+        assert!(app.last_click.is_none(), "a miss should not bank a click");
     }
 }

@@ -107,7 +107,14 @@ ordinary file panes work alongside it as usual.
 
 Inside it, `j`/`k` move the selection, `Enter` jumps iTerm2's focus to that tab, and `r`
 renames it — clearing the name puts the tab back to the one oko derives from its directory.
-Everything else on the keyboard is ignored there, since the pane shows no files.
+Everything else on the keyboard is ignored there, since the pane shows no files. The mouse
+works as it does on a file row: a click selects the card under the cursor, a double-click
+jumps to that tab. The selected card is marked only while the card pane is the active one,
+so `Tab` away and there is one cursor on screen, not two.
+
+Cards stack in one column until the pane is wide enough for two roomy ones side by side
+(about 120 columns), on the grounds that a wide single column reads better than two cramped
+ones.
 
 PanEx reads this from `oko --follow` as a child process rather than linking oko as a
 library, so the feature degrades to nothing when oko is absent: **no oko, no shortcut** —

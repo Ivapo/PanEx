@@ -191,8 +191,13 @@ const CARD_HEIGHT_STACKED: u16 = 4;
 /// between cards and not as the edge of a box — the boxes are what one
 /// column is trying to get away from.
 const CARD_RULE: &str = "┈";
-/// Below this a card holds no readable path, so the grid stays one column.
-const CARD_MIN_WIDTH: u16 = 22;
+/// The width one card wants before it will share a row with another, so two
+/// columns start at twice this. Well above what a card *needs* to draw — 22
+/// would fit one — because fitting is not the question: a stacked card spends
+/// its whole width on the path, and the half-width pane the card view opens
+/// into reads better as one roomy column than as two cramped ones. This is the
+/// one number to turn if the grid should break sooner or later.
+const CARD_COLUMN_WIDTH: u16 = 60;
 
 /// The card view. What each field means is oko's, in its
 /// `rules/follow-stream.md`; how it is laid out is deliberately ours — its
@@ -237,22 +242,35 @@ fn render_oko_pane(
         ..inner
     };
 
-    match &app.oko_view {
+    // Marked only while this pane is the active one, the same as the row under
+    // the cursor in a file pane. Two cursors lit at once reads as two places
+    // the keyboard might land, when only one of them is listening.
+    let selected = if app.active_pane_id == pane_id {
+        app.oko_selected.as_deref()
+    } else {
+        None
+    };
+
+    let cards = match &app.oko_view {
         crate::oko::View::Connecting => {
-            render_oko_note(frame, body, "connecting to oko…", Color::DarkGray)
+            render_oko_note(frame, body, "connecting to oko…", Color::DarkGray);
+            Vec::new()
         }
-        crate::oko::View::Lost(message) => render_oko_note(frame, body, message, Color::Red),
+        crate::oko::View::Lost(message) => {
+            render_oko_note(frame, body, message, Color::Red);
+            Vec::new()
+        }
         crate::oko::View::Rows(rows) if rows.is_empty() => {
-            render_oko_note(frame, body, "no tabs to show", Color::DarkGray)
+            render_oko_note(frame, body, "no tabs to show", Color::DarkGray);
+            Vec::new()
         }
-        crate::oko::View::Rows(rows) => render_oko_cards(
-            frame,
-            body,
-            rows,
-            &app.home_path,
-            app.oko_selected.as_deref(),
-        ),
-    }
+        crate::oko::View::Rows(rows) => {
+            render_oko_cards(frame, body, rows, &app.home_path, selected)
+        }
+    };
+    // Where the mouse has to land to hit each card. Only what was actually
+    // drawn: a card left out for want of room is not there to be clicked.
+    app.oko_cards = cards;
 }
 
 fn render_oko_note(frame: &mut Frame, area: Rect, message: &str, color: Color) {
@@ -260,20 +278,23 @@ fn render_oko_note(frame: &mut Frame, area: Rect, message: &str, color: Color) {
     frame.render_widget(text, Rect { height: 1, ..area });
 }
 
+/// Draws the cards and returns where each one landed, keyed by session, for
+/// mouse hit-testing.
 fn render_oko_cards(
     frame: &mut Frame,
     area: Rect,
     rows: &[crate::oko::Row],
     home: &str,
     selected: Option<&str>,
-) {
-    let columns = (area.width / CARD_MIN_WIDTH).max(1);
+) -> Vec<(Rect, String)> {
+    let columns = (area.width / CARD_COLUMN_WIDTH).max(1);
     // In one column the side rules enclose nothing — they only spend two
     // columns of a pane that is already the narrow one. A rule above each
     // card separates them just as well, and buys back a row as well.
     // No scrolling here yet: a window with more tabs than fit simply shows the
     // ones that do, rather than drawing a card over the pane border.
     let fits = |y: u16, h: u16| y + h <= area.y + area.height;
+    let mut hits = Vec::new();
 
     if columns == 1 {
         let mut y = area.y;
@@ -289,17 +310,19 @@ fn render_oko_cards(
             if !fits(y, height) {
                 break;
             }
+            let card = Rect { y, height, ..area };
             render_oko_card_stacked(
                 frame,
-                Rect { y, height, ..area },
+                card,
                 row,
                 home,
                 selected == Some(row.session_id.as_str()),
                 ruled,
             );
+            hits.push((card, row.session_id.clone()));
             y += height;
         }
-        return;
+        return hits;
     }
 
     let card_width = area.width / columns;
@@ -309,19 +332,22 @@ fn render_oko_cards(
         if !fits(y, CARD_HEIGHT) {
             break;
         }
+        let card = Rect {
+            x: area.x + (i % columns) * card_width,
+            y,
+            width: card_width,
+            height: CARD_HEIGHT,
+        };
         render_oko_card_boxed(
             frame,
-            Rect {
-                x: area.x + (i % columns) * card_width,
-                y,
-                width: card_width,
-                height: CARD_HEIGHT,
-            },
+            card,
             row,
             home,
             selected == Some(row.session_id.as_str()),
         );
+        hits.push((card, row.session_id.clone()));
     }
+    hits
 }
 
 /// Three lines and no rule: the name with its tab, then the directory and
@@ -1395,12 +1421,20 @@ mod oko_tests {
         ])
     }
 
+    /// Whichever layout it is drawn in — the tab number rides the name line
+    /// when the cards are stacked, and the box title when they are not.
     #[test]
     fn a_card_carries_tab_name_path_status_and_age() {
         let mut app = showing(four_tabs());
-        let s = screen(&mut app, 60, 14);
+
+        let stacked = screen(&mut app, 60, 14);
+        for expected in ["oko", "⌘ 2", "/Users/me/dev/main/oko", "ready", ">30m"] {
+            assert!(stacked.contains(expected), "missing {expected:?} in:\n{stacked}");
+        }
+
+        let boxed = screen(&mut app, 130, 14);
         for expected in ["2 oko", "/Users/me/dev/main/oko", "ready", ">30m"] {
-            assert!(s.contains(expected), "missing {expected:?} in:\n{s}");
+            assert!(boxed.contains(expected), "missing {expected:?} in:\n{boxed}");
         }
     }
 
@@ -1463,8 +1497,9 @@ mod oko_tests {
     }
 
     /// Whether any cell on the line containing `needle` is drawn in the accent.
+    /// Wide enough for two columns, where the accent is what marks a card.
     fn accented_line(app: &mut App, needle: &str) -> bool {
-        let mut terminal = Terminal::new(TestBackend::new(60, 14)).unwrap();
+        let mut terminal = Terminal::new(TestBackend::new(130, 14)).unwrap();
         terminal.draw(|frame| draw(frame, app)).unwrap();
         let buffer = terminal.backend().buffer().clone();
         for y in 0..buffer.area.height {
@@ -1626,6 +1661,48 @@ mod oko_layout_tests {
         assert!(lit[0].contains("oko") && lit[0].contains("⌘ 2"), "wrong line: {:?}", lit[0]);
     }
 
+    /// Two lit cursors read as two places the keyboard might land, when only
+    /// the active pane is listening. Tab away and the card mark goes with it —
+    /// the selection itself stays, and comes back lit when the pane does.
+    #[test]
+    fn the_selected_card_is_only_marked_while_its_pane_is_active() {
+        let mut app = App::new().unwrap();
+        let files = app.active_pane_id.clone();
+        let cards = "pane-cards".to_string();
+        app.layout_root = crate::layout::split_pane_on(
+            &app.layout_root,
+            &files,
+            &cards,
+            crate::layout::SplitDirection::Vertical,
+            crate::layout::Side::Before,
+        );
+        app.pane_map
+            .insert(cards.clone(), crate::app::PaneState::new(&app.home_path));
+        app.oko_pane_id = Some(cards.clone());
+        app.oko_view = View::Rows(rows());
+        app.oko_selected = Some("session-2".to_string());
+
+        let away = screen_with_highlights(&mut app, 68, 16);
+        assert!(
+            away.iter().any(|(text, _)| text.contains("oko")),
+            "the card should still be drawn:\n{}",
+            away.iter().map(|(t, _)| t.as_str()).collect::<Vec<_>>().join("\n")
+        );
+        assert!(
+            away.iter().filter(|(t, _)| t.contains("⌘ 2")).all(|(_, lit)| !lit),
+            "card marked while another pane is active:\n{}",
+            away.iter().map(|(t, _)| t.as_str()).collect::<Vec<_>>().join("\n")
+        );
+
+        app.active_pane_id = cards;
+        let back = screen_with_highlights(&mut app, 68, 16);
+        assert!(
+            back.iter().any(|(t, lit)| *lit && t.contains("⌘ 2")),
+            "the mark should come back with the pane:\n{}",
+            back.iter().map(|(t, _)| t.as_str()).collect::<Vec<_>>().join("\n")
+        );
+    }
+
     #[test]
     fn the_highlight_moves_with_the_selection() {
         let lit = |sel| {
@@ -1656,7 +1733,7 @@ mod oko_layout_tests {
     /// Side by side, the box is what tells one card from its neighbour.
     #[test]
     fn two_columns_keep_the_boxes() {
-        let s = screen(62, 14);
+        let s = screen(130, 14);
         assert!(
             interior(&s).iter().any(|l| l.contains('│')),
             "cards should be boxed when they sit side by side:\n{s}"
@@ -1664,10 +1741,28 @@ mod oko_layout_tests {
         assert!(s.contains("1 ivapo") && s.contains("2 oko"));
     }
 
+    /// A second column has to earn its place: a pane wide enough for two
+    /// cramped ones reads better as one roomy one, so the split waits until
+    /// both halves are as wide as a card actually wants.
+    #[test]
+    fn one_column_holds_a_wide_pane_before_it_splits() {
+        let one = screen(CARD_COLUMN_WIDTH * 2 - 1, 16);
+        assert!(
+            !interior(&one).iter().any(|l| l.contains('│')),
+            "boxed too early — this should still be one column:\n{one}"
+        );
+
+        let two = screen(CARD_COLUMN_WIDTH * 2 + 2, 16);
+        assert!(
+            interior(&two).iter().any(|l| l.contains('│')),
+            "should be two columns by here:\n{two}"
+        );
+    }
+
     /// Whichever style, no card may spill past the pane it lives in.
     #[test]
     fn cards_stay_inside_the_pane() {
-        for (w, h) in [(34, 14), (62, 14), (24, 8), (80, 6)] {
+        for (w, h) in [(34, 14), (62, 14), (130, 14), (24, 8), (80, 6)] {
             let s = screen(w, h);
             for line in s.lines() {
                 assert_eq!(line.chars().count(), w as usize, "at {w}x{h}:\n{s}");
