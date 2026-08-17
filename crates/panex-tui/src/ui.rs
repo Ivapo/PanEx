@@ -185,8 +185,12 @@ fn render_pane(frame: &mut Frame, app: &mut App, pane_id: &str, area: Rect) {
 /// Boxed card: two borders and two lines of content — the path, and either a
 /// status with its age or the foreground job.
 const CARD_HEIGHT: u16 = 4;
-/// Stacked card: a name line and two indented under it, no border at all.
-const CARD_HEIGHT_STACKED: u16 = 3;
+/// Stacked card: a rule, the name line, and two indented under it.
+const CARD_HEIGHT_STACKED: u16 = 4;
+/// The stacked separator. Dashed rather than solid so it reads as a gap
+/// between cards and not as the edge of a box — the boxes are what one
+/// column is trying to get away from.
+const CARD_RULE: &str = "┈";
 /// Below this a card holds no readable path, so the grid stays one column.
 const CARD_MIN_WIDTH: u16 = 22;
 
@@ -267,46 +271,56 @@ fn render_oko_cards(
     // In one column the side rules enclose nothing — they only spend two
     // columns of a pane that is already the narrow one. A rule above each
     // card separates them just as well, and buys back a row as well.
-    let stacked = columns == 1;
-    let card_height = if stacked { CARD_HEIGHT_STACKED } else { CARD_HEIGHT };
-    let card_width = area.width / columns;
+    // No scrolling here yet: a window with more tabs than fit simply shows the
+    // ones that do, rather than drawing a card over the pane border.
+    let fits = |y: u16, h: u16| y + h <= area.y + area.height;
 
+    if columns == 1 {
+        let mut y = area.y;
+        for (i, row) in rows.iter().enumerate() {
+            // The rule goes *between* cards, so the first one does without:
+            // the header above it is already the separator it would be.
+            let ruled = i > 0;
+            let height = if ruled {
+                CARD_HEIGHT_STACKED
+            } else {
+                CARD_HEIGHT_STACKED - 1
+            };
+            if !fits(y, height) {
+                break;
+            }
+            render_oko_card_stacked(
+                frame,
+                Rect { y, height, ..area },
+                row,
+                home,
+                selected == Some(row.session_id.as_str()),
+                ruled,
+            );
+            y += height;
+        }
+        return;
+    }
+
+    let card_width = area.width / columns;
     for (i, row) in rows.iter().enumerate() {
         let i = i as u16;
-        let y = area.y + (i / columns) * card_height;
-        // No scrolling here yet: a window with more tabs than fit simply
-        // shows the ones that do, rather than drawing a card over the border.
-        if y + card_height > area.y + area.height {
+        let y = area.y + (i / columns) * CARD_HEIGHT;
+        if !fits(y, CARD_HEIGHT) {
             break;
         }
-        render_oko_card(
+        render_oko_card_boxed(
             frame,
             Rect {
                 x: area.x + (i % columns) * card_width,
                 y,
                 width: card_width,
-                height: card_height,
+                height: CARD_HEIGHT,
             },
             row,
             home,
-            stacked,
             selected == Some(row.session_id.as_str()),
         );
-    }
-}
-
-fn render_oko_card(
-    frame: &mut Frame,
-    area: Rect,
-    row: &crate::oko::Row,
-    home: &str,
-    stacked: bool,
-    selected: bool,
-) {
-    if stacked {
-        render_oko_card_stacked(frame, area, row, home, selected);
-    } else {
-        render_oko_card_boxed(frame, area, row, home, selected);
     }
 }
 
@@ -319,10 +333,33 @@ fn render_oko_card_stacked(
     row: &crate::oko::Row,
     home: &str,
     selected: bool,
+    ruled: bool,
 ) {
     if area.width < 4 {
         return;
     }
+    // Above the name rather than around the card: it separates this one from
+    // the one before it, which is all the boxes were doing here.
+    let area = if ruled {
+        frame.render_widget(
+            Paragraph::new(Span::styled(
+                CARD_RULE.repeat(area.width as usize),
+                Style::default().fg(Color::DarkGray),
+            )),
+            Rect { height: 1, ..area },
+        );
+        if area.height < 2 {
+            return;
+        }
+        Rect {
+            y: area.y + 1,
+            height: area.height - 1,
+            ..area
+        }
+    } else {
+        area
+    };
+
     // The name line carries the selection the way the file list marks the row
     // under the cursor — same colours, so moving through cards and moving
     // through files are visibly the same gesture.
@@ -1540,7 +1577,33 @@ mod oko_layout_tests {
         app.oko_pane_id = Some(app.active_pane_id.clone());
         app.oko_view = View::Rows(rows());
         app.oko_selected = Some(selected.to_string());
-        screen_with_highlights(&mut app, 34, 14)
+        screen_with_highlights(&mut app, 34, 16)
+    }
+
+    /// A separator separates: it goes between cards, and the header above the
+    /// first is already doing that job for it.
+    #[test]
+    fn the_rule_goes_between_cards_and_not_above_the_first() {
+        let lines: Vec<String> = stacked("session-1").into_iter().map(|(t, _)| t).collect();
+        let ruled: Vec<usize> = lines
+            .iter()
+            .enumerate()
+            .filter(|(_, l)| l.contains("┈"))
+            .map(|(i, _)| i)
+            .collect();
+        let first_card = lines.iter().position(|l| l.contains("ivapo")).unwrap();
+
+        assert!(
+            !ruled.contains(&(first_card - 1)),
+            "rule above the first card:\n{}",
+            lines.join("\n")
+        );
+        let second_card = lines.iter().position(|l| l.contains("oko")).unwrap();
+        assert!(
+            ruled.contains(&(second_card - 1)),
+            "no rule before the second card:\n{}",
+            lines.join("\n")
+        );
     }
 
     /// Name and tab on one line, directory and activity indented under it.
@@ -1578,7 +1641,8 @@ mod oko_layout_tests {
 
     #[test]
     fn a_single_column_draws_no_card_sides() {
-        let s = screen(34, 14);
+        // Tall enough for three stacked cards and the two rules between them.
+        let s = screen(34, 16);
         for line in interior(&s) {
             assert!(
                 !line.contains('│'),
