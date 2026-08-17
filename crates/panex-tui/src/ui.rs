@@ -496,23 +496,62 @@ fn render_oko_card_boxed(
     );
 }
 
+/// What names a Claude tab on its activity line. A plain tab says what is
+/// running in it, and without this a Claude tab — the thing the view exists
+/// for — would say less than the tab that is only sitting at a shell.
+///
+/// The mark is the one Claude Code prints beside its own name, not the SVG
+/// logo: a cell grid has nowhere to put an image, and the six-spoked asterisk
+/// in the right orange is what makes it recognisable one character wide.
+const CLAUDE_MARK: &str = "✻ ";
+const CLAUDE_WORD: &str = "claude ";
+/// Claude's orange, taken from the icon rather than from the terminal palette —
+/// a named colour would come out whatever orange the theme happens to hold.
+const CLAUDE_ORANGE: Color = Color::Rgb(217, 119, 87);
+
 /// What is happening in that directory, and how long it has said so.
 ///
 /// A row carries a status or a job and never both: a status means a Claude
-/// tab, and oko withholds `jobName` there because it was measured unstable
-/// within one session.
+/// tab, and oko withholds `jobName` there because on a Claude pane it names
+/// the agent process and never the work. Claude Code spawns its tools without
+/// handing them the tty's foreground process group, so the pane's deepest
+/// foreground job stays the agent throughout — measured over 38 minutes and
+/// four status transitions on 2026-08-17, which produced no `jobName` event at
+/// all. Invariant, not unstable. See Ivapo/PanEx#4.
 fn activity_line(row: &crate::oko::Row, width: usize, dim: Color) -> Line<'static> {
-    let (text, color) = match (row.status.as_deref(), row.job.as_deref()) {
+    // Who it is, then how it is: `✻ claude ◐ working`. The name leads because
+    // it is the same on every Claude card and the eye can skip it; the
+    // indicator sits against the status it belongs to.
+    let (claude, glyph, text, color) = match (row.status.as_deref(), row.job.as_deref()) {
         (Some(status), _) => {
             let (glyph, color) = status_style(status);
-            (format!("{} {}", glyph, status), color)
+            (true, format!("{} ", glyph), status.to_string(), color)
         }
-        (None, Some(job)) => (truncate_left(job, width), dim),
-        (None, None) => (String::new(), dim),
+        (None, Some(job)) => (false, String::new(), truncate_left(job, width), dim),
+        (None, None) => (false, String::new(), String::new(), dim),
     };
+
+    // The name costs nine columns on a line that already right-aligns the age,
+    // so in a card too narrow to hold both it is the name that goes: the glyph
+    // and the status are the reading, and the name only says which kind of tab
+    // it is — which a status at all already implies.
     let age = row.age.clone().unwrap_or_default();
-    let gap = width.saturating_sub(text.chars().count() + age.chars().count());
+    let len = |s: &str| s.chars().count();
+    let bare = len(&glyph) + len(&text) + len(&age);
+    let named = claude && bare + len(CLAUDE_MARK) + len(CLAUDE_WORD) < width;
+    let (mark, word) = if named {
+        (CLAUDE_MARK, CLAUDE_WORD)
+    } else {
+        ("", "")
+    };
+
+    let gap = width.saturating_sub(bare + len(mark) + len(word));
     Line::from(vec![
+        Span::styled(mark, Style::default().fg(CLAUDE_ORANGE)),
+        // The name dim and the status in its own colour: the name is the
+        // constant on this line and the status is the part that changes.
+        Span::styled(word, Style::default().fg(dim)),
+        Span::styled(glyph, Style::default().fg(color)),
         Span::styled(text, Style::default().fg(color)),
         Span::raw(" ".repeat(gap)),
         Span::styled(age, Style::default().fg(dim)),
@@ -1454,6 +1493,34 @@ mod oko_tests {
         let mut app = showing(four_tabs());
         let s = screen(&mut app, 60, 14);
         assert!(s.contains("panex"), "job missing in:\n{s}");
+        assert!(
+            !s.lines().any(|l| l.contains("panex") && l.contains("claude")),
+            "a plain tab should not be labelled claude:\n{s}"
+        );
+    }
+
+    /// A plain tab names what is running in it. Without this the Claude tabs —
+    /// what the view exists for — read as carrying less than the shell does.
+    /// Who it is, then how it is: mark, name, indicator, status.
+    #[test]
+    fn a_claude_card_says_claude_beside_its_status() {
+        let mut app = showing(four_tabs());
+        let s = screen(&mut app, 60, 14);
+        assert!(s.contains("✻ claude ● ready"), "unlabelled in:\n{s}");
+    }
+
+    /// The label costs nine columns on a line that right-aligns the age. In a
+    /// card too narrow for both, the age is the reading and the word goes.
+    #[test]
+    fn a_narrow_card_drops_the_label_rather_than_the_age() {
+        let mut app = showing(four_tabs());
+        let s = screen(&mut app, 24, 14);
+        assert!(s.contains("● ready"), "status missing in:\n{s}");
+        assert!(!s.contains("claude"), "label kept in a card too narrow:\n{s}");
+        assert!(s.contains(">30m"), "age dropped instead of the label:\n{s}");
+        for line in s.lines() {
+            assert_eq!(line.chars().count(), 24, "spilled the pane:\n{s}");
+        }
     }
 
     /// oko publishes paths unabbreviated on purpose — the `~` is ours to draw.
@@ -1648,7 +1715,7 @@ mod oko_layout_tests {
         let at = lines.iter().position(|l| l.contains("oko")).unwrap();
         assert!(lines[at].contains("⌘ 2"), "tab not on the name line: {:?}", lines[at]);
         assert!(lines[at + 1].starts_with("│   /"), "path not indented: {:?}", lines[at + 1]);
-        assert!(lines[at + 2].starts_with("│   ●"), "activity not indented: {:?}", lines[at + 2]);
+        assert!(lines[at + 2].starts_with("│   ✻"), "activity not indented: {:?}", lines[at + 2]);
     }
 
     /// The highlight marks the name line and only the name line, the same as
