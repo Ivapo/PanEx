@@ -10,6 +10,10 @@ use crate::sort::SortField;
 
 /// Amber accent — folder icons and the footer brand.
 const ACCENT: Color = Color::Rgb(255, 191, 0);
+/// `working` in the card view. Named rather than `Color::Cyan` because the
+/// distinction that matters is from `ready`'s green, and terminal palettes
+/// render their own cyan anywhere from blue to mint.
+const TEAL: Color = Color::Rgb(0, 178, 172);
 /// Padded so a status line clipped at the column edge can't butt up against it.
 const BRAND: &str = "  panex ";
 /// Scroll thumb glyph. Half-width so it reads lighter than the full block
@@ -181,8 +185,7 @@ fn render_pane(frame: &mut Frame, app: &mut App, pane_id: &str, area: Rect) {
 /// Boxed card: two borders and two lines of content — the path, and either a
 /// status with its age or the foreground job.
 const CARD_HEIGHT: u16 = 4;
-/// Stacked card: a rule instead of a box, so the same two lines cost one row
-/// less and two columns less.
+/// Stacked card: a name line and two indented under it, no border at all.
 const CARD_HEIGHT_STACKED: u16 = 3;
 /// Below this a card holds no readable path, so the grid stays one column.
 const CARD_MIN_WIDTH: u16 = 22;
@@ -300,10 +303,96 @@ fn render_oko_card(
     stacked: bool,
     selected: bool,
 ) {
+    if stacked {
+        render_oko_card_stacked(frame, area, row, home, selected);
+    } else {
+        render_oko_card_boxed(frame, area, row, home, selected);
+    }
+}
+
+/// Three lines and no rule: the name with its tab, then the directory and
+/// what is happening in it, indented beneath. The indent is what groups them,
+/// so a separator would only spend a row saying the same thing.
+fn render_oko_card_stacked(
+    frame: &mut Frame,
+    area: Rect,
+    row: &crate::oko::Row,
+    home: &str,
+    selected: bool,
+) {
+    if area.width < 4 {
+        return;
+    }
+    // The name line carries the selection the way the file list marks the row
+    // under the cursor — same colours, so moving through cards and moving
+    // through files are visibly the same gesture.
+    let (fg, dim) = if selected {
+        (Color::White, Color::Gray)
+    } else {
+        (Color::Reset, Color::DarkGray)
+    };
+    let mut line_style = Style::default().fg(fg);
+    if selected {
+        line_style = line_style.bg(Color::DarkGray);
+    }
+
+    let tab = format!("⌘ {}", row.tab);
+    let width = area.width as usize;
+    let name_room = width.saturating_sub(tab.chars().count() + 3);
+    let name = truncate_right(row.name.as_deref().unwrap_or("—"), name_room);
+    let gap = width.saturating_sub(name.chars().count() + tab.chars().count() + 2);
+    frame.render_widget(
+        Paragraph::new(Line::from(vec![
+            Span::raw(" "),
+            Span::styled(name, Style::default().add_modifier(Modifier::BOLD)),
+            Span::raw(" ".repeat(gap)),
+            Span::styled(tab, Style::default().fg(dim)),
+            Span::raw(" "),
+        ]))
+        .style(line_style),
+        Rect { height: 1, ..area },
+    );
+
+    // The two detail lines are indented under the name rather than aligned
+    // with it, which is the whole separator this layout has.
+    let indent = Rect {
+        x: area.x + 3,
+        width: area.width.saturating_sub(3),
+        y: area.y + 1,
+        height: 1,
+    };
+    if area.height < 2 {
+        return;
+    }
+    let inner_width = indent.width as usize;
+    let path = row.path.as_deref().map(|p| abbreviate(p, home)).unwrap_or_default();
+    frame.render_widget(
+        Paragraph::new(Span::styled(
+            truncate_left(&path, inner_width),
+            Style::default().fg(Color::DarkGray),
+        )),
+        indent,
+    );
+
+    if area.height < 3 {
+        return;
+    }
+    frame.render_widget(
+        Paragraph::new(activity_line(row, inner_width, Color::DarkGray)),
+        Rect { y: indent.y + 1, ..indent },
+    );
+}
+
+fn render_oko_card_boxed(
+    frame: &mut Frame,
+    area: Rect,
+    row: &crate::oko::Row,
+    home: &str,
+    selected: bool,
+) {
     let name = row.name.as_deref().unwrap_or("—");
-    // The selected card is what Enter jumps to and `r` renames, so it is
-    // marked on the border and the title rather than by a background — a
-    // stacked card has almost no background to fill.
+    // Side by side there is no full-width line to highlight without it
+    // reading as a filled box, so the selection lands on the border instead.
     let (border, title) = if selected {
         (
             Style::default().fg(ACCENT),
@@ -316,22 +405,11 @@ fn render_oko_card(
         )
     };
     let block = Block::default()
-        .borders(if stacked { Borders::TOP } else { Borders::ALL })
+        .borders(Borders::ALL)
         .border_style(border)
         .title(Span::styled(format!(" {} {} ", row.tab, name), title));
     let inner = block.inner(area);
     frame.render_widget(block, area);
-    // A top rule leaves the content flush against the pane border, so it gets
-    // the indent the box's own left edge was providing.
-    let inner = if stacked {
-        Rect {
-            x: inner.x + 1,
-            width: inner.width.saturating_sub(1),
-            ..inner
-        }
-    } else {
-        inner
-    };
     if inner.height == 0 || inner.width == 0 {
         return;
     }
@@ -349,48 +427,45 @@ fn render_oko_card(
     if inner.height < 2 {
         return;
     }
-    let second = Rect {
-        y: inner.y + 1,
-        height: 1,
-        ..inner
-    };
-    // A row with a status is a Claude tab and carries no job; a row without
-    // one carries the foreground process instead. They are exclusive.
-    if let Some(status) = row.status.as_deref() {
-        frame.render_widget(
-            Paragraph::new(status_line(status, row.age.as_deref(), width)),
-            second,
-        );
-    } else if let Some(job) = row.job.as_deref() {
-        frame.render_widget(
-            Paragraph::new(Span::styled(
-                truncate_left(job, width),
-                Style::default().fg(Color::DarkGray),
-            )),
-            second,
-        );
-    }
+    frame.render_widget(
+        Paragraph::new(activity_line(row, width, Color::DarkGray)),
+        Rect { y: inner.y + 1, height: 1, ..inner },
+    );
 }
 
-/// Status on the left, how long it has said so on the right.
-fn status_line(status: &str, age: Option<&str>, width: usize) -> Line<'static> {
-    let (glyph, color) = match status {
-        "working" => ("◐", Color::Green),
+/// What is happening in that directory, and how long it has said so.
+///
+/// A row carries a status or a job and never both: a status means a Claude
+/// tab, and oko withholds `jobName` there because it was measured unstable
+/// within one session.
+fn activity_line(row: &crate::oko::Row, width: usize, dim: Color) -> Line<'static> {
+    let (text, color) = match (row.status.as_deref(), row.job.as_deref()) {
+        (Some(status), _) => {
+            let (glyph, color) = status_style(status);
+            (format!("{} {}", glyph, status), color)
+        }
+        (None, Some(job)) => (truncate_left(job, width), dim),
+        (None, None) => (String::new(), dim),
+    };
+    let age = row.age.clone().unwrap_or_default();
+    let gap = width.saturating_sub(text.chars().count() + age.chars().count());
+    Line::from(vec![
+        Span::styled(text, Style::default().fg(color)),
+        Span::raw(" ".repeat(gap)),
+        Span::styled(age, Style::default().fg(dim)),
+    ])
+}
+
+fn status_style(status: &str) -> (&'static str, Color) {
+    match status {
+        "ready" => ("●", Color::Green),
+        "working" => ("◐", TEAL),
         "waiting" => ("▲", ACCENT),
-        "ready" => ("●", Color::Cyan),
         "stale" => ("○", Color::DarkGray),
         // A status this build does not know is still worth showing as text —
         // the schema check upstream is what guards against drawing nonsense.
         _ => ("·", Color::DarkGray),
-    };
-    let left = format!("{} {}", glyph, status);
-    let right = age.unwrap_or("");
-    let gap = width.saturating_sub(left.chars().count() + right.chars().count());
-    Line::from(vec![
-        Span::styled(left, Style::default().fg(color)),
-        Span::raw(" ".repeat(gap)),
-        Span::styled(right.to_string(), Style::default().fg(Color::DarkGray)),
-    ])
+    }
 }
 
 /// oko publishes paths unabbreviated on purpose — `~` is a decoration, and
@@ -401,6 +476,16 @@ fn abbreviate(path: &str, home: &str) -> String {
         Some(rest) if rest.starts_with('/') => format!("~{}", rest),
         _ => path.to_string(),
     }
+}
+
+/// Names read from the start, so a long one loses its tail.
+fn truncate_right(s: &str, max: usize) -> String {
+    let chars: Vec<char> = s.chars().collect();
+    if chars.len() <= max || max == 0 {
+        return s.to_string();
+    }
+    let keep = max.saturating_sub(1);
+    format!("{}…", chars[..keep].iter().collect::<String>())
 }
 
 /// Paths and job names are recognised by their tails, so drop from the left.
@@ -1434,6 +1519,63 @@ mod oko_layout_tests {
 
     /// One column of cards has nothing to enclose, so the side rules go and
     /// the row they cost comes back.
+    /// The screen, plus which lines carry a highlight background.
+    fn screen_with_highlights(app: &mut App, w: u16, h: u16) -> Vec<(String, bool)> {
+        let mut terminal = Terminal::new(TestBackend::new(w, h)).unwrap();
+        terminal.draw(|frame| draw(frame, app)).unwrap();
+        let buffer = terminal.backend().buffer().clone();
+        (0..buffer.area.height)
+            .map(|y| {
+                let text = (0..buffer.area.width)
+                    .map(|x| buffer[(x, y)].symbol())
+                    .collect::<String>();
+                let lit = (0..buffer.area.width).any(|x| buffer[(x, y)].bg == Color::DarkGray);
+                (text, lit)
+            })
+            .collect()
+    }
+
+    fn stacked(selected: &str) -> Vec<(String, bool)> {
+        let mut app = App::new().unwrap();
+        app.oko_pane_id = Some(app.active_pane_id.clone());
+        app.oko_view = View::Rows(rows());
+        app.oko_selected = Some(selected.to_string());
+        screen_with_highlights(&mut app, 34, 14)
+    }
+
+    /// Name and tab on one line, directory and activity indented under it.
+    #[test]
+    fn a_stacked_card_is_a_name_line_and_two_indented_under_it() {
+        let lines: Vec<String> = stacked("session-2").into_iter().map(|(t, _)| t).collect();
+        let at = lines.iter().position(|l| l.contains("oko")).unwrap();
+        assert!(lines[at].contains("⌘ 2"), "tab not on the name line: {:?}", lines[at]);
+        assert!(lines[at + 1].starts_with("│   /"), "path not indented: {:?}", lines[at + 1]);
+        assert!(lines[at + 2].starts_with("│   ●"), "activity not indented: {:?}", lines[at + 2]);
+    }
+
+    /// The highlight marks the name line and only the name line, the same as
+    /// the row under the cursor in a file pane.
+    #[test]
+    fn the_highlight_lands_on_the_name_line() {
+        let lines = stacked("session-2");
+        let lit: Vec<&String> = lines.iter().filter(|(_, l)| *l).map(|(t, _)| t).collect();
+        assert_eq!(lit.len(), 1, "expected one highlighted line, got {lit:?}");
+        assert!(lit[0].contains("oko") && lit[0].contains("⌘ 2"), "wrong line: {:?}", lit[0]);
+    }
+
+    #[test]
+    fn the_highlight_moves_with_the_selection() {
+        let lit = |sel| {
+            stacked(sel)
+                .into_iter()
+                .find(|(_, l)| *l)
+                .map(|(t, _)| t)
+                .unwrap()
+        };
+        assert!(lit("session-1").contains("ivapo"));
+        assert!(lit("session-3").contains("tikray"));
+    }
+
     #[test]
     fn a_single_column_draws_no_card_sides() {
         let s = screen(34, 14);
@@ -1444,7 +1586,7 @@ mod oko_layout_tests {
             );
         }
         // Boxed cards are 4 rows, stacked ones 3, so all three fit here.
-        assert!(s.contains("3 tikray"), "third card should fit:\n{s}");
+        assert!(s.contains("tikray"), "third card should fit:\n{s}");
     }
 
     /// Side by side, the box is what tells one card from its neighbour.
