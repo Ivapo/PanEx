@@ -1280,14 +1280,22 @@ fn close_pane(app: &mut App, pane_id: &str) {
         app.layout_root = new_root;
         app.pane_map.remove(pane_id);
         app.raw_entries_map.remove(pane_id);
-        if app.oko_pane_id.as_deref() == Some(pane_id) {
+        let returning = if app.oko_pane_id.as_deref() == Some(pane_id) {
             detach_oko(app);
-        }
+            app.oko_return_to.take()
+        } else {
+            None
+        };
 
-        // Activate first remaining pane
+        // Closing the cards hands the keyboard back to the pane that had it
+        // when they opened, so `O` twice leaves you where you started. Failing
+        // that — the pane is gone too — the first one left.
         let leaf_ids = collect_leaf_ids(&app.layout_root);
-        if let Some(first) = leaf_ids.first() {
-            app.active_pane_id = first.clone();
+        let next = returning
+            .filter(|id| leaf_ids.contains(id))
+            .or_else(|| leaf_ids.first().cloned());
+        if let Some(id) = next {
+            app.active_pane_id = id;
         }
     }
 }
@@ -1299,7 +1307,11 @@ fn toggle_oko_pane(app: &mut App) {
         return;
     }
 
-    open_oko_pane(app);
+    // Opened to be read and acted on, so the keyboard goes with it — and the
+    // pane it came from is remembered, for when the view closes again.
+    app.oko_return_to = Some(app.active_pane_id.clone());
+    let cards = open_oko_pane(app);
+    app.active_pane_id = cards;
     match crate::oko::Stream::start() {
         Ok(stream) => {
             app.oko_stream = Some(stream);
@@ -2056,6 +2068,27 @@ mod oko_pane_tests {
 
         assert_eq!(app.oko_selected.as_deref(), Some("s1"));
         assert_eq!(app.oko_offset, 0);
+    }
+
+    /// You opened it to read it, so the keyboard goes with it.
+    #[test]
+    fn o_focuses_the_cards_and_closing_hands_the_keyboard_back() {
+        let mut app = App::new().unwrap();
+        let files = app.active_pane_id.clone();
+        // A second pane, moved to, so "the pane you came from" and "the first
+        // pane in the layout" are not the same answer.
+        press(&mut app, KeyCode::Char('|'));
+        press(&mut app, KeyCode::Tab);
+        let second = app.active_pane_id.clone();
+        assert_ne!(second, files, "Tab should have left the first pane");
+
+        app.oko_available = true;
+        press(&mut app, KeyCode::Char('O'));
+        let cards = app.oko_pane_id.clone().expect("no card pane opened");
+        assert_eq!(app.active_pane_id, cards, "cards opened unfocused");
+
+        press(&mut app, KeyCode::Char('O'));
+        assert_eq!(app.active_pane_id, second, "keyboard did not come back");
     }
 
     /// Closing the view is never a dead end, even as the only pane left.

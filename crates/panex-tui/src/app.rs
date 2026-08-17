@@ -152,6 +152,10 @@ pub struct App {
     /// size off `list_area.height`; here a card is several rows tall and the
     /// count depends on the column layout, so the renderer leaves it behind.
     pub oko_capacity: usize,
+    /// The pane that was active when the cards were opened, so closing them
+    /// puts the keyboard back where it was rather than on whichever pane
+    /// happens to be first in the layout.
+    pub oko_return_to: Option<String>,
 }
 
 impl App {
@@ -203,6 +207,7 @@ impl App {
             oko_cards: Vec::new(),
             oko_offset: 0,
             oko_capacity: 0,
+            oko_return_to: None,
         })
     }
 

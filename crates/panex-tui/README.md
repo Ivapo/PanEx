@@ -102,8 +102,9 @@ Extensions not listed fall back to the OS default (`open` on macOS, `xdg-open` o
 If [oko](https://github.com/Ivapo/oko) is installed, `O` opens a pane showing what every
 other tab in the same iTerm2 window is doing — working directory, foreground process, and
 for a Claude Code tab whether it is working, waiting on you, ready for a prompt or stale,
-with how long it has said so. Press `O` again to close it. At most one such pane at a time;
-ordinary file panes work alongside it as usual.
+with how long it has said so. It opens focused, and `O` again closes it and hands the keyboard
+back to the pane you opened it from. At most one such pane at a time; ordinary file panes work
+alongside it as usual.
 
 A Claude tab's card names it — `✻ claude ◐ working`, Claude Code's own mark in Claude's
 orange, then the status indicator and the status — and a plain tab's card names its foreground
