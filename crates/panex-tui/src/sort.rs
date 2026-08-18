@@ -10,15 +10,6 @@ pub enum SortField {
 }
 
 impl SortField {
-    pub fn label(self) -> &'static str {
-        match self {
-            SortField::Name => "Name",
-            SortField::Extension => "Ext",
-            SortField::Size => "Size",
-            SortField::Modified => "Modified",
-        }
-    }
-
     pub fn cycle(self) -> Self {
         match self {
             SortField::Name => SortField::Extension,

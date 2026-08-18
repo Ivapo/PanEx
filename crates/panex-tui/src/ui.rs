@@ -847,8 +847,7 @@ fn render_scroll_thumb(
 }
 
 fn render_status_bar(frame: &mut Frame, app: &App, area: Rect) {
-    // The card view has no items, no sort and no hidden files. Reporting on a
-    // file list that isn't there would describe the wrong pane.
+    // The card view has no file list — it counts tabs instead of items.
     let left = if app.oko_pane_id.as_deref() == Some(app.active_pane_id.as_str()) {
         match &app.oko_view {
             crate::oko::View::Rows(rows) => format!(" {} tabs", rows.len()),
@@ -856,32 +855,16 @@ fn render_status_bar(frame: &mut Frame, app: &App, area: Rect) {
             crate::oko::View::Lost(_) => " no stream".to_string(),
         }
     } else {
-        let pane = app.pane_map.get(&app.active_pane_id);
-        let item_count = pane.map(|p| p.entries.len()).unwrap_or(0);
-        let sel_count = pane.map(|p| p.selected_paths.len()).unwrap_or(0);
-
-        let mut parts = vec![
-            format!(" {} items", item_count),
-            format!("Sort: {} {}", app.sort_field.label(), app.sort_direction.indicator()),
-        ];
-
-        if sel_count > 0 {
-            parts.insert(1, format!("{} selected", sel_count));
-        }
-
-        if !app.show_hidden {
-            parts.push("Hidden: off".to_string());
-        } else {
-            parts.push("Hidden: on".to_string());
-        }
-
-        parts.join(" │ ")
+        let item_count = app
+            .pane_map
+            .get(&app.active_pane_id)
+            .map(|p| p.entries.len())
+            .unwrap_or(0);
+        format!(" {} items", item_count)
     };
 
-    let cards_active = app.oko_pane_id.as_deref() == Some(app.active_pane_id.as_str());
     let mode_hint = match &app.mode {
-        AppMode::Normal if cards_active => "↑↓/jk:select  ↵:jump  r:rename  O:close  Tab:panes",
-        AppMode::Normal => "?:help q:quit |_:split +-:size W:close /:search f:fav",
+        AppMode::Normal => "?:help  q:quit",
         AppMode::Help => "Esc/q/?:close",
         AppMode::Search { .. } => "Esc:cancel  Enter:confirm",
         AppMode::Rename { .. } => "Esc:cancel  Enter:rename",
