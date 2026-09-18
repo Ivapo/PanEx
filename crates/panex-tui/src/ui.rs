@@ -558,6 +558,25 @@ const CLAUDE_WORD: &str = "claude ";
 /// a named colour would come out whatever orange the theme happens to hold.
 const CLAUDE_ORANGE: Color = Color::Rgb(217, 119, 87);
 
+/// What names a Helix tab, by the same rule the Claude mark sets: the mark
+/// carries the identity in its own colour, the word stays dim, and colour
+/// anywhere else on this line means state.
+///
+/// The glyph is two stacked waves — the double strand seen edge-on, which is
+/// as much of the helix as a single cell can hold. Two rather than the one
+/// wave of `∿` because ink is what the mark is read by: a single thin stroke
+/// comes out of a fallback face that has no bold weight, so at 14px it reads
+/// faint beside `✻` and bolding it changes nothing. It is single-width and has
+/// no emoji presentation, unlike 🧬: this line measures in `chars().count()`
+/// and right-aligns the age, so a glyph the terminal draws two cells wide
+/// would push every Helix card's age out of column.
+const HELIX_MARK: &str = "≈ ";
+const HELIX_WORD: &str = "hx ";
+/// Helix's purple, taken from the strand in its logo (`#706bc8`) rather than
+/// from the terminal palette — a named colour would come out whatever purple
+/// the theme happens to hold.
+const HELIX_PURPLE: Color = Color::Rgb(112, 107, 200);
+
 /// What is happening in that directory, and how long it has said so.
 ///
 /// A row carries a status or a job and never both: a status means a Claude
@@ -568,35 +587,41 @@ const CLAUDE_ORANGE: Color = Color::Rgb(217, 119, 87);
 /// four status transitions on 2026-08-17, which produced no `jobName` event at
 /// all. Invariant, not unstable. See Ivapo/PanEx#4.
 fn activity_line(row: &crate::oko::Row, width: usize, dim: Color) -> Line<'static> {
-    // Who it is, then how it is: `✻ claude ◐ working`. The name leads because
-    // it is the same on every Claude card and the eye can skip it; the
-    // indicator sits against the status it belongs to.
-    let (claude, glyph, text, color) = match (row.status.as_deref(), row.job.as_deref()) {
+    // Who it is, then how it is: `✻ claude ◐ working`, `≈ hx`. The name leads
+    // because it is the same on every card of that kind and the eye can skip
+    // it; the indicator sits against the status it belongs to. A tab that is
+    // only sitting at a shell is nobody, and shows its job instead.
+    let (ident, glyph, text, color) = match (row.status.as_deref(), row.job.as_deref()) {
         (Some(status), _) => {
+            let ident = (CLAUDE_MARK, CLAUDE_WORD, CLAUDE_ORANGE);
             let (glyph, color) = status_style(status);
-            (true, format!("{} ", glyph), status.to_string(), color)
+            (Some(ident), format!("{} ", glyph), status.to_string(), color)
         }
-        (None, Some(job)) => (false, String::new(), truncate_left(job, width), dim),
-        (None, None) => (false, String::new(), String::new(), dim),
+        // The mark already says Helix, so drawing the job name `hx` beside it
+        // would only say it twice. The text slot stays empty for the file oko
+        // is to publish alongside the job, which will read `≈ hx main.rs`.
+        (None, Some("hx")) => {
+            let ident = (HELIX_MARK, HELIX_WORD, HELIX_PURPLE);
+            (Some(ident), String::new(), String::new(), dim)
+        }
+        (None, Some(job)) => (None, String::new(), truncate_left(job, width), dim),
+        (None, None) => (None, String::new(), String::new(), dim),
     };
 
-    // The name costs nine columns on a line that already right-aligns the age,
-    // so in a card too narrow to hold both it is the name that goes: the glyph
-    // and the status are the reading, and the name only says which kind of tab
-    // it is — which a status at all already implies.
+    // The name costs up to nine columns on a line that already right-aligns
+    // the age, so in a card too narrow to hold both it is the name that goes:
+    // the glyph and the status are the reading, and the name only says which
+    // kind of tab it is — which a status at all already implies.
     let age = row.age.clone().unwrap_or_default();
     let len = |s: &str| s.chars().count();
     let bare = len(&glyph) + len(&text) + len(&age);
-    let named = claude && bare + len(CLAUDE_MARK) + len(CLAUDE_WORD) < width;
-    let (mark, word) = if named {
-        (CLAUDE_MARK, CLAUDE_WORD)
-    } else {
-        ("", "")
-    };
+    let (mark, word, mark_color) = ident
+        .filter(|&(mark, word, _)| bare + len(mark) + len(word) < width)
+        .unwrap_or(("", "", dim));
 
     let gap = width.saturating_sub(bare + len(mark) + len(word));
     Line::from(vec![
-        Span::styled(mark, Style::default().fg(CLAUDE_ORANGE)),
+        Span::styled(mark, Style::default().fg(mark_color)),
         // The name dim and the status in its own colour: the name is the
         // constant on this line and the status is the part that changes.
         Span::styled(word, Style::default().fg(dim)),
@@ -1539,6 +1564,28 @@ mod oko_tests {
         let mut app = showing(four_tabs());
         let s = screen(&mut app, 60, 14);
         assert!(s.contains("✻ claude ● ready"), "unlabelled in:\n{s}");
+    }
+
+    /// A Helix tab is named the way a Claude tab is: the mark carries who it
+    /// is and the word stays dim. The job name it was drawn under before would
+    /// only say `hx` a second time.
+    #[test]
+    fn a_helix_card_says_hx_beside_its_mark() {
+        let mut app = showing(View::Rows(vec![row(
+            1,
+            "PanEx",
+            "/Users/me/dev/main/PanEx",
+            None,
+            Some(">2m"),
+            Some("hx"),
+        )]));
+        let s = screen(&mut app, 60, 10);
+        assert!(s.contains("≈ hx"), "unmarked in:\n{s}");
+        // A double-width mark would count as one char here and two on screen,
+        // pushing the age out of column.
+        for line in s.lines() {
+            assert_eq!(line.chars().count(), 60, "the mark is not one cell:\n{s}");
+        }
     }
 
     /// The label costs nine columns on a line that right-aligns the age. In a
