@@ -607,14 +607,17 @@ fn activity_line(row: &crate::oko::Row, width: usize, dim: Color) -> Line<'stati
         // reads `≈ hx main.rs`. Truncated from the left like the job below it:
         // this slot is one slot, and what fills it is read by its tail.
         //
-        // Dim, not coloured. The file is what the pane is pointed at rather
-        // than how it is doing, and colour away from the mark means state. A
-        // Helix pane oko has not read carries no file, and an empty slot
-        // leaves the line exactly as it was before oko published one.
+        // White, and white rather than a hue on purpose. `hx` is the same on
+        // every Helix card and the file is the part that changes, so the file
+        // has to lift off the word — but hue on this line is spoken for, the
+        // mark's own colour meaning identity and the text slot's meaning state
+        // on a Claude card. Brightness separates the two without claiming
+        // either. A Helix pane oko has not read carries no file, and an empty
+        // slot leaves the line exactly as it was before oko published one.
         (None, Some("hx")) => {
             let ident = (HELIX_MARK, HELIX_WORD, HELIX_PURPLE);
             let file = row.file.as_deref().unwrap_or_default();
-            (Some(ident), String::new(), truncate_left(file, width), dim)
+            (Some(ident), String::new(), truncate_left(file, width), Color::White)
         }
         (None, Some(job)) => (None, String::new(), truncate_left(job, width), dim),
         (None, None) => (None, String::new(), String::new(), dim),
@@ -1624,6 +1627,64 @@ mod oko_tests {
         let mut app = showing(helix_card(None));
         let s = screen(&mut app, 60, 10);
         assert_eq!(activity_line_of(&s), ["≈", "hx", ">2m"], "stood in for it:\n{s}");
+    }
+
+    /// `hx` is on every Helix card and the file is the part that changes, so
+    /// the two must not read as one run of text. Brightness is what separates
+    /// them — hue on this line already means identity or state.
+    #[test]
+    fn the_file_is_brighter_than_the_editor_name() {
+        let mut app = showing(helix_card(Some("main.rs")));
+        let colours = colours_of(&mut app, 60, 10, "main.rs");
+        assert_eq!(colours["hx"], Color::DarkGray, "the constant word should stay dim");
+        assert_eq!(colours["main.rs"], Color::White, "the file should lift off it");
+        assert_eq!(colours["≈"], HELIX_PURPLE, "the mark keeps its own colour");
+    }
+
+    /// The foreground colour each of `≈`, `hx` and `needle` is drawn in, read
+    /// off the cells of the line `needle` lands on. One colour per run, and a
+    /// run drawn in two colours is itself a failure worth hearing about.
+    fn colours_of(
+        app: &mut App,
+        width: u16,
+        height: u16,
+        needle: &str,
+    ) -> std::collections::HashMap<String, Color> {
+        let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
+        terminal.draw(|frame| draw(frame, app)).unwrap();
+        let buffer = terminal.backend().buffer().clone();
+
+        let row = (0..buffer.area.height)
+            .find(|&y| {
+                let line: String = (0..buffer.area.width)
+                    .map(|x| buffer[(x, y)].symbol())
+                    .collect();
+                line.contains(needle)
+            })
+            .unwrap_or_else(|| panic!("no line carrying {needle:?}"));
+
+        let cells: Vec<(String, Color)> = (0..buffer.area.width)
+            .map(|x| {
+                let cell = &buffer[(x, row)];
+                (cell.symbol().to_string(), cell.fg)
+            })
+            .collect();
+        let text: String = cells.iter().map(|(s, _)| s.as_str()).collect();
+
+        let mut out = std::collections::HashMap::new();
+        for run in ["≈", "hx", needle] {
+            let at = text.find(run).unwrap_or_else(|| panic!("no {run:?} in {text:?}"));
+            // Byte offset to cell index: every symbol before it is one cell.
+            let start = text[..at].chars().count();
+            let span = &cells[start..start + run.chars().count()];
+            let colour = span[0].1;
+            assert!(
+                span.iter().all(|&(_, c)| c == colour),
+                "{run:?} is drawn in more than one colour: {span:?}"
+            );
+            out.insert(run.to_string(), colour);
+        }
+        out
     }
 
     /// The file shares the slot the job name uses and is bounded the same way.
