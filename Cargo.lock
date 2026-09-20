@@ -2340,7 +2340,7 @@ dependencies = [
 
 [[package]]
 name = "panex-core"
-version = "0.4.2"
+version = "0.4.3"
 dependencies = [
  "dirs",
  "serde",
@@ -2350,7 +2350,7 @@ dependencies = [
 
 [[package]]
 name = "panex-tui"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "crossterm",
  "dirs",
