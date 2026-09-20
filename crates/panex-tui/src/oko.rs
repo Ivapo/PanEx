@@ -50,6 +50,21 @@ pub struct Row {
     pub age: Option<String>,
     #[serde(default)]
     pub job: Option<String>,
+    /// The base name of the file a Helix pane is editing — no path, no `[+]`.
+    /// The third conditional key, and the only one that rides alongside
+    /// another rather than excluding it: present where `job` is `hx` and oko
+    /// has read that pane's status line, absent — never null — everywhere
+    /// else. So a Helix pane oko has not read yet is a `job: "hx"` carrying no
+    /// `file`, which is how it is told apart from a row that is not Helix.
+    ///
+    /// It arrived under `schema: 1`, and `KNOWN_SCHEMA` deliberately does not
+    /// move for it: a key an old consumer ignores does not make that consumer
+    /// wrong, whereas a bump means "stop drawing" and would have blanked this
+    /// card view until it shipped its half. oko's argument is its
+    /// `specs/tab_dashboard_spec.md` §2.18; the contract is its
+    /// `rules/follow-stream.md`.
+    #[serde(default)]
+    pub file: Option<String>,
 }
 
 /// What the reader thread has to say. `Lost` is terminal — the stream that
@@ -305,6 +320,7 @@ mod tests {
                 status: Some("ready".into()),
                 age: Some(">30m".into()),
                 job: None,
+                file: None,
             }])
         );
     }
@@ -331,6 +347,43 @@ mod tests {
                 assert_eq!(rows[0].job.as_deref(), Some("panex"));
                 assert!(rows[0].status.is_none());
             }
+            other => panic!("expected rows, got {other:?}"),
+        }
+    }
+
+    /// The rows of one snapshot, read the way a live stream delivers them.
+    fn rows_from(rows: &str) -> Vec<Row> {
+        let line = format!(r#"{{"rows":[{rows}],"window_number":0}}"#);
+        match &events_from(&format!("{HEADER}\n{line}\n"))[0] {
+            Event::Rows(rows) => rows.clone(),
+            other => panic!("expected rows, got {other:?}"),
+        }
+    }
+
+    /// A Helix row oko has read carries the file, under the same schema 1 as
+    /// every other row — which is the whole of oko's §2.18 argument, and the
+    /// reason `KNOWN_SCHEMA` does not move for it.
+    #[test]
+    fn a_helix_row_carries_the_file_it_is_editing() {
+        let hx = r#"{"file":"main.rs","job":"hx","name":"P","path":"/x","session_id":"C","tab":3}"#;
+        assert_eq!(rows_from(hx)[0].file.as_deref(), Some("main.rs"));
+    }
+
+    /// The key is absent rather than null on every other row, and on a Helix
+    /// pane whose status line oko has never matched. Absence has to parse, or
+    /// an older oko — and every non-Helix row of a current one — tears the
+    /// stream down.
+    #[test]
+    fn a_row_without_the_file_key_still_parses() {
+        let hx = r#"{"job":"hx","name":"P","path":"/x","session_id":"C","tab":3}"#;
+        let rows = rows_from(hx);
+        assert_eq!(rows[0].job.as_deref(), Some("hx"), "still a Helix row");
+        assert!(rows[0].file.is_none(), "absent is None, not an error");
+
+        // And the canned snapshot above, captured from an oko predating the
+        // key entirely, still reads as a row that simply has no file.
+        match &events_from(&format!("{HEADER}\n{SNAPSHOT}\n"))[0] {
+            Event::Rows(rows) => assert!(rows[0].file.is_none()),
             other => panic!("expected rows, got {other:?}"),
         }
     }

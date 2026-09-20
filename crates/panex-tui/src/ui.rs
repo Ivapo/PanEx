@@ -579,13 +579,18 @@ const HELIX_PURPLE: Color = Color::Rgb(112, 107, 200);
 
 /// What is happening in that directory, and how long it has said so.
 ///
-/// A row carries a status or a job and never both: a status means a Claude
-/// tab, and oko withholds `jobName` there because on a Claude pane it names
-/// the agent process and never the work. Claude Code spawns its tools without
-/// handing them the tty's foreground process group, so the pane's deepest
-/// foreground job stays the agent throughout — measured over 38 minutes and
-/// four status transitions on 2026-08-17, which produced no `jobName` event at
-/// all. Invariant, not unstable. See Ivapo/PanEx#4.
+/// A row carries a status or a job and never both, and a Helix row may carry
+/// the file it is editing alongside its job — see `oko::Row::file` for why
+/// that one is not exclusive with anything, and for the absence it leaves on a
+/// Helix pane oko has not read.
+///
+/// Why a Claude row has no job at all, which is a fact about `jobName` and
+/// settles nothing about `file`: there it names the agent process and never
+/// the work. Claude Code spawns its tools without handing them the tty's
+/// foreground process group, so the pane's deepest foreground job stays the
+/// agent throughout — measured over 38 minutes and four status transitions on
+/// 2026-08-17, which produced no `jobName` event at all. Invariant, not
+/// unstable. See Ivapo/PanEx#4.
 fn activity_line(row: &crate::oko::Row, width: usize, dim: Color) -> Line<'static> {
     // Who it is, then how it is: `✻ claude ◐ working`, `≈ hx`. The name leads
     // because it is the same on every card of that kind and the eye can skip
@@ -598,11 +603,18 @@ fn activity_line(row: &crate::oko::Row, width: usize, dim: Color) -> Line<'stati
             (Some(ident), format!("{} ", glyph), status.to_string(), color)
         }
         // The mark already says Helix, so drawing the job name `hx` beside it
-        // would only say it twice. The text slot stays empty for the file oko
-        // is to publish alongside the job, which will read `≈ hx main.rs`.
+        // would only say it twice. The text slot carries the file instead, and
+        // reads `≈ hx main.rs`. Truncated from the left like the job below it:
+        // this slot is one slot, and what fills it is read by its tail.
+        //
+        // Dim, not coloured. The file is what the pane is pointed at rather
+        // than how it is doing, and colour away from the mark means state. A
+        // Helix pane oko has not read carries no file, and an empty slot
+        // leaves the line exactly as it was before oko published one.
         (None, Some("hx")) => {
             let ident = (HELIX_MARK, HELIX_WORD, HELIX_PURPLE);
-            (Some(ident), String::new(), String::new(), dim)
+            let file = row.file.as_deref().unwrap_or_default();
+            (Some(ident), String::new(), truncate_left(file, width), dim)
         }
         (None, Some(job)) => (None, String::new(), truncate_left(job, width), dim),
         (None, None) => (None, String::new(), String::new(), dim),
@@ -1498,6 +1510,7 @@ mod oko_tests {
             status: status.map(String::from),
             age: age.map(String::from),
             job: job.map(String::from),
+            file: None,
         }
     }
 
@@ -1586,6 +1599,56 @@ mod oko_tests {
         for line in s.lines() {
             assert_eq!(line.chars().count(), 60, "the mark is not one cell:\n{s}");
         }
+    }
+
+    /// One Helix card, with or without the file oko may have read off it.
+    fn helix_card(file: Option<&str>) -> View {
+        let base = row(1, "PanEx", "/Users/me/dev/PanEx", None, Some(">2m"), Some("hx"));
+        View::Rows(vec![Row { file: file.map(String::from), ..base }])
+    }
+
+    /// The slot the mark left empty now holds the file, so a Helix card says
+    /// which file as well as which editor.
+    #[test]
+    fn a_helix_card_says_the_file_it_is_editing() {
+        let mut app = showing(helix_card(Some("main.rs")));
+        let s = screen(&mut app, 60, 10);
+        assert_eq!(activity_line_of(&s), ["≈", "hx", "main.rs", ">2m"], "in:\n{s}");
+    }
+
+    /// oko sends no `file` for a Helix pane whose status line it has never
+    /// read, and none at all from a build predating the key. Either way the
+    /// slot is empty and the card draws exactly as it did before.
+    #[test]
+    fn a_helix_card_without_a_file_draws_as_it_did() {
+        let mut app = showing(helix_card(None));
+        let s = screen(&mut app, 60, 10);
+        assert_eq!(activity_line_of(&s), ["≈", "hx", ">2m"], "stood in for it:\n{s}");
+    }
+
+    /// The file shares the slot the job name uses and is bounded the same way.
+    /// A card is a card wide, whatever oko puts in it.
+    #[test]
+    fn a_long_file_name_does_not_spill_the_card() {
+        let long = "a_file_whose_name_is_far_longer_than_any_card.rs";
+        let mut app = showing(helix_card(Some(long)));
+        let s = screen(&mut app, 24, 10);
+        for line in s.lines() {
+            assert_eq!(line.chars().count(), 24, "spilled the pane:\n{s}");
+        }
+    }
+
+    /// The words of the line under the path, which is where `activity_line`
+    /// draws. Split on whitespace because the age is right-aligned by a gap
+    /// whose width is the card's, not the assertion's business.
+    fn activity_line_of(screen: &str) -> Vec<&str> {
+        screen
+            .lines()
+            .find(|l| l.contains(HELIX_MARK.trim_end()))
+            .unwrap_or_else(|| panic!("no Helix line in:\n{screen}"))
+            .trim_matches(|c: char| c.is_whitespace() || c == '│')
+            .split_whitespace()
+            .collect()
     }
 
     /// The label costs nine columns on a line that right-aligns the age. In a
@@ -1701,6 +1764,7 @@ mod oko_layout_tests {
             status: status.map(String::from),
             age: age.map(String::from),
             job: job.map(String::from),
+            file: None,
         })
         .collect()
     }

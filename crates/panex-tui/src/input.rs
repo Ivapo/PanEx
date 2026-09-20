@@ -1882,6 +1882,7 @@ mod oko_pane_tests {
             status: Some("working".to_string()),
             age: None,
             job: None,
+            file: None,
         }
     }
 
