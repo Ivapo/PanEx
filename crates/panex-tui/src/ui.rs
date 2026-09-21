@@ -577,12 +577,40 @@ const HELIX_WORD: &str = "hx ";
 /// the theme happens to hold.
 const HELIX_PURPLE: Color = Color::Rgb(112, 107, 200);
 
+/// What names an mdview tab, by the same rule again. The pilcrow is the mark
+/// of running prose, and it sits in Latin-1, so it comes out of the
+/// terminal's own face with that face's weight — not out of a fallback, which
+/// is where `∿` went faint. Single-width with no emoji presentation, for the
+/// column reason `HELIX_MARK` gives.
+const MDVIEW_MARK: &str = "¶ ";
+const MDVIEW_WORD: &str = "mdview ";
+/// The magenta mdview draws an H1 in, pinned to the RGB the author's iTerm2
+/// profile gives ANSI magenta (`#c040be`): mdview has no logo to take a colour
+/// from, and its own heading is the colour an mdview tab is seen wearing.
+///
+/// Chosen on screen over the blue of mdview's links. On a navy ground the blue
+/// sat nearest HELIX_PURPLE in hue and at twice its brightness, so an mdview
+/// card outshone a Helix one; this is furthest from the purple in hue and
+/// matches its weight, 4.5:1 against the ground to the purple's 4.4:1.
+const MDVIEW_MAGENTA: Color = Color::Rgb(192, 64, 190);
+
+/// The mark, word and colour that name a job whose card carries its file —
+/// the two jobs oko publishes `file` for, and exactly those. Any other job is
+/// nobody in particular and is drawn as its name.
+fn file_job_ident(job: &str) -> Option<(&'static str, &'static str, Color)> {
+    match job {
+        "hx" => Some((HELIX_MARK, HELIX_WORD, HELIX_PURPLE)),
+        "mdview" => Some((MDVIEW_MARK, MDVIEW_WORD, MDVIEW_MAGENTA)),
+        _ => None,
+    }
+}
+
 /// What is happening in that directory, and how long it has said so.
 ///
-/// A row carries a status or a job and never both, and a Helix row may carry
-/// the file it is editing alongside its job — see `oko::Row::file` for why
-/// that one is not exclusive with anything, and for the absence it leaves on a
-/// Helix pane oko has not read.
+/// A row carries a status or a job and never both, and a Helix or mdview row
+/// may carry the file it has open alongside its job — see `oko::Row::file` for
+/// why that one is not exclusive with anything, and for the absence it leaves
+/// on a pane oko has no file for.
 ///
 /// Why a Claude row has no job at all, which is a fact about `jobName` and
 /// settles nothing about `file`: there it names the agent process and never
@@ -602,24 +630,26 @@ fn activity_line(row: &crate::oko::Row, width: usize, dim: Color) -> Line<'stati
             let (glyph, color) = status_style(status);
             (Some(ident), format!("{} ", glyph), status.to_string(), color)
         }
-        // The mark already says Helix, so drawing the job name `hx` beside it
-        // would only say it twice. The text slot carries the file instead, and
-        // reads `≈ hx main.rs`. Truncated from the left like the job below it:
-        // this slot is one slot, and what fills it is read by its tail.
+        // The mark already says which program, so drawing the job name beside
+        // it would only say it twice. The text slot carries the file instead,
+        // and reads `≈ hx main.rs` or `¶ mdview README.md`. Truncated from the
+        // left like a job name: this slot is one slot, and what fills it is
+        // read by its tail.
         //
-        // White, and white rather than a hue on purpose. `hx` is the same on
-        // every Helix card and the file is the part that changes, so the file
-        // has to lift off the word — but hue on this line is spoken for, the
-        // mark's own colour meaning identity and the text slot's meaning state
-        // on a Claude card. Brightness separates the two without claiming
-        // either. A Helix pane oko has not read carries no file, and an empty
-        // slot leaves the line exactly as it was before oko published one.
-        (None, Some("hx")) => {
-            let ident = (HELIX_MARK, HELIX_WORD, HELIX_PURPLE);
-            let file = row.file.as_deref().unwrap_or_default();
-            (Some(ident), String::new(), truncate_left(file, width), Color::White)
-        }
-        (None, Some(job)) => (None, String::new(), truncate_left(job, width), dim),
+        // White, and white rather than a hue on purpose. The word is the same
+        // on every card of its kind and the file is the part that changes, so
+        // the file has to lift off the word — but hue on this line is spoken
+        // for, the mark's own colour meaning identity and the text slot's
+        // meaning state on a Claude card. Brightness separates the two without
+        // claiming either. A pane oko has no file for leaves the slot empty,
+        // and the line exactly as it was before oko published one.
+        (None, Some(job)) => match file_job_ident(job) {
+            Some(ident) => {
+                let file = row.file.as_deref().unwrap_or_default();
+                (Some(ident), String::new(), truncate_left(file, width), Color::White)
+            }
+            None => (None, String::new(), truncate_left(job, width), dim),
+        },
         (None, None) => (None, String::new(), String::new(), dim),
     };
 
@@ -1582,73 +1612,83 @@ mod oko_tests {
         assert!(s.contains("✻ claude ● ready"), "unlabelled in:\n{s}");
     }
 
-    /// A Helix tab is named the way a Claude tab is: the mark carries who it
-    /// is and the word stays dim. The job name it was drawn under before would
-    /// only say `hx` a second time.
+    /// The two jobs a card names by a mark and follows with a file, each with
+    /// its mark, the mark's colour and a file of the kind it holds.
+    const FILE_JOBS: [(&str, &str, Color, &str); 2] = [
+        ("hx", "≈", HELIX_PURPLE, "main.rs"),
+        ("mdview", "¶", MDVIEW_MAGENTA, "README.md"),
+    ];
+
+    /// A Helix or mdview tab is named the way a Claude tab is: the mark
+    /// carries who it is and the word stays dim. The job name it was drawn
+    /// under before would only say `hx` or `mdview` a second time.
     #[test]
-    fn a_helix_card_says_hx_beside_its_mark() {
-        let mut app = showing(View::Rows(vec![row(
-            1,
-            "PanEx",
-            "/Users/me/dev/main/PanEx",
-            None,
-            Some(">2m"),
-            Some("hx"),
-        )]));
-        let s = screen(&mut app, 60, 10);
-        assert!(s.contains("≈ hx"), "unmarked in:\n{s}");
-        // A double-width mark would count as one char here and two on screen,
-        // pushing the age out of column.
-        for line in s.lines() {
-            assert_eq!(line.chars().count(), 60, "the mark is not one cell:\n{s}");
+    fn a_file_card_says_its_program_beside_its_mark() {
+        for (job, mark, _, _) in FILE_JOBS {
+            let mut app = showing(file_card(job, None));
+            let s = screen(&mut app, 60, 10);
+            assert!(s.contains(&format!("{mark} {job}")), "unmarked in:\n{s}");
+            // A double-width mark would count as one char here and two on
+            // screen, pushing the age out of column.
+            for line in s.lines() {
+                assert_eq!(line.chars().count(), 60, "{mark} is not one cell:\n{s}");
+            }
         }
     }
 
-    /// One Helix card, with or without the file oko may have read off it.
-    fn helix_card(file: Option<&str>) -> View {
-        let base = row(1, "PanEx", "/Users/me/dev/PanEx", None, Some(">2m"), Some("hx"));
+    /// One card whose job is `job`, with or without the file oko may have
+    /// for it.
+    fn file_card(job: &str, file: Option<&str>) -> View {
+        let base = row(1, "PanEx", "/Users/me/dev/PanEx", None, Some(">2m"), Some(job));
         View::Rows(vec![Row { file: file.map(String::from), ..base }])
     }
 
-    /// The slot the mark left empty now holds the file, so a Helix card says
-    /// which file as well as which editor.
+    /// The slot the mark left empty holds the file, so a card says which file
+    /// as well as which program.
     #[test]
-    fn a_helix_card_says_the_file_it_is_editing() {
-        let mut app = showing(helix_card(Some("main.rs")));
-        let s = screen(&mut app, 60, 10);
-        assert_eq!(activity_line_of(&s), ["≈", "hx", "main.rs", ">2m"], "in:\n{s}");
+    fn a_file_card_says_the_file_it_has_open() {
+        for (job, mark, _, file) in FILE_JOBS {
+            let mut app = showing(file_card(job, Some(file)));
+            let s = screen(&mut app, 60, 10);
+            assert_eq!(activity_line_of(&s, mark), [mark, job, file, ">2m"], "in:\n{s}");
+        }
     }
 
     /// oko sends no `file` for a Helix pane whose status line it has never
-    /// read, and none at all from a build predating the key. Either way the
-    /// slot is empty and the card draws exactly as it did before.
+    /// read, for an mdview whose command line does not name its file plainly,
+    /// and for neither from a build predating the key. Whichever, the slot is
+    /// empty and the card draws exactly as it did before.
     #[test]
-    fn a_helix_card_without_a_file_draws_as_it_did() {
-        let mut app = showing(helix_card(None));
-        let s = screen(&mut app, 60, 10);
-        assert_eq!(activity_line_of(&s), ["≈", "hx", ">2m"], "stood in for it:\n{s}");
+    fn a_file_card_without_a_file_draws_as_it_did() {
+        for (job, mark, _, _) in FILE_JOBS {
+            let mut app = showing(file_card(job, None));
+            let s = screen(&mut app, 60, 10);
+            assert_eq!(activity_line_of(&s, mark), [mark, job, ">2m"], "stood in for it:\n{s}");
+        }
     }
 
-    /// `hx` is on every Helix card and the file is the part that changes, so
-    /// the two must not read as one run of text. Brightness is what separates
-    /// them — hue on this line already means identity or state.
+    /// The word is on every card of its kind and the file is the part that
+    /// changes, so the two must not read as one run of text. Brightness is
+    /// what separates them — hue on this line already means identity or state.
     #[test]
-    fn the_file_is_brighter_than_the_editor_name() {
-        let mut app = showing(helix_card(Some("main.rs")));
-        let colours = colours_of(&mut app, 60, 10, "main.rs");
-        assert_eq!(colours["hx"], Color::DarkGray, "the constant word should stay dim");
-        assert_eq!(colours["main.rs"], Color::White, "the file should lift off it");
-        assert_eq!(colours["≈"], HELIX_PURPLE, "the mark keeps its own colour");
+    fn the_file_is_brighter_than_the_program_name() {
+        for (job, mark, colour, file) in FILE_JOBS {
+            let mut app = showing(file_card(job, Some(file)));
+            let colours = colours_of(&mut app, 60, 10, &[mark, job, file]);
+            assert_eq!(colours[job], Color::DarkGray, "{job}: the word should stay dim");
+            assert_eq!(colours[file], Color::White, "{job}: the file should lift off it");
+            assert_eq!(colours[mark], colour, "{job}: the mark keeps its own colour");
+        }
     }
 
-    /// The foreground colour each of `≈`, `hx` and `needle` is drawn in, read
-    /// off the cells of the line `needle` lands on. One colour per run, and a
-    /// run drawn in two colours is itself a failure worth hearing about.
+    /// The foreground colour each of `runs` is drawn in, read off the cells of
+    /// the line that carries all of them. One colour per run, and a run drawn
+    /// in two colours is itself a failure worth hearing about.
     fn colours_of(
         app: &mut App,
         width: u16,
         height: u16,
-        needle: &str,
+        runs: &[&str],
     ) -> std::collections::HashMap<String, Color> {
         let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
         terminal.draw(|frame| draw(frame, app)).unwrap();
@@ -1659,9 +1699,9 @@ mod oko_tests {
                 let line: String = (0..buffer.area.width)
                     .map(|x| buffer[(x, y)].symbol())
                     .collect();
-                line.contains(needle)
+                runs.iter().all(|run| line.contains(run))
             })
-            .unwrap_or_else(|| panic!("no line carrying {needle:?}"));
+            .unwrap_or_else(|| panic!("no line carrying all of {runs:?}"));
 
         let cells: Vec<(String, Color)> = (0..buffer.area.width)
             .map(|x| {
@@ -1672,7 +1712,7 @@ mod oko_tests {
         let text: String = cells.iter().map(|(s, _)| s.as_str()).collect();
 
         let mut out = std::collections::HashMap::new();
-        for run in ["≈", "hx", needle] {
+        for &run in runs {
             let at = text.find(run).unwrap_or_else(|| panic!("no {run:?} in {text:?}"));
             // Byte offset to cell index: every symbol before it is one cell.
             let start = text[..at].chars().count();
@@ -1692,21 +1732,23 @@ mod oko_tests {
     #[test]
     fn a_long_file_name_does_not_spill_the_card() {
         let long = "a_file_whose_name_is_far_longer_than_any_card.rs";
-        let mut app = showing(helix_card(Some(long)));
-        let s = screen(&mut app, 24, 10);
-        for line in s.lines() {
-            assert_eq!(line.chars().count(), 24, "spilled the pane:\n{s}");
+        for (job, _, _, _) in FILE_JOBS {
+            let mut app = showing(file_card(job, Some(long)));
+            let s = screen(&mut app, 24, 10);
+            for line in s.lines() {
+                assert_eq!(line.chars().count(), 24, "{job} spilled the pane:\n{s}");
+            }
         }
     }
 
-    /// The words of the line under the path, which is where `activity_line`
+    /// The words of the line carrying `mark`, which is the one `activity_line`
     /// draws. Split on whitespace because the age is right-aligned by a gap
     /// whose width is the card's, not the assertion's business.
-    fn activity_line_of(screen: &str) -> Vec<&str> {
+    fn activity_line_of<'a>(screen: &'a str, mark: &str) -> Vec<&'a str> {
         screen
             .lines()
-            .find(|l| l.contains(HELIX_MARK.trim_end()))
-            .unwrap_or_else(|| panic!("no Helix line in:\n{screen}"))
+            .find(|l| l.contains(mark))
+            .unwrap_or_else(|| panic!("no {mark} line in:\n{screen}"))
             .trim_matches(|c: char| c.is_whitespace() || c == '│')
             .split_whitespace()
             .collect()

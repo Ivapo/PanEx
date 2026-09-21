@@ -50,12 +50,13 @@ pub struct Row {
     pub age: Option<String>,
     #[serde(default)]
     pub job: Option<String>,
-    /// The base name of the file a Helix pane is editing — no path, no `[+]`.
-    /// The third conditional key, and the only one that rides alongside
+    /// The base name of the file a Helix or mdview pane has open — no path, no
+    /// `[+]`. The third conditional key, and the only one that rides alongside
     /// another rather than excluding it: present where `job` is `hx` and oko
-    /// has read that pane's status line, absent — never null — everywhere
-    /// else. So a Helix pane oko has not read yet is a `job: "hx"` carrying no
-    /// `file`, which is how it is told apart from a row that is not Helix.
+    /// has read that pane's status line, or where `job` is `mdview` and oko
+    /// could read the file off its launch arguments; absent — never null —
+    /// everywhere else. So a pane of either oko has no file for is a `job`
+    /// carrying no `file`, which is how it is told apart from any other job.
     ///
     /// It arrived under `schema: 1`, and `KNOWN_SCHEMA` deliberately does not
     /// move for it: a key an old consumer ignores does not make that consumer
