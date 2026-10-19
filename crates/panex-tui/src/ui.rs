@@ -683,6 +683,9 @@ fn status_style(status: &str) -> (&'static str, Color) {
         "working" => ("◐", TEAL),
         "waiting" => ("▲", ACCENT),
         "stale" => ("○", Color::DarkGray),
+        // A ready whose turn left work running (oko §2.20). Not green: the agent
+        // will come back on its own, so it is not "done".
+        "background" => ("◔", Color::Blue),
         // A status this build does not know is still worth showing as text —
         // the schema check upstream is what guards against drawing nonsense.
         _ => ("·", Color::DarkGray),
